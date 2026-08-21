@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PDF Tools">
+<title>PDF Tools — on-device, offline</title>
+<style>
+  :root{
+    --ink:#12181F;
+    --ink-soft:#2B3542;
+    --paper:#F6F4EF;
+    --paper-dim:#E9E5DC;
+    --brass:#9C7A3C;
+    --brass-bright:#C9A15A;
+    --line:rgba(18,24,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Iowan Old Style","Georgia",serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+  }
+  .sheet{
+    width:100%;
+    max-width:460px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:2px;
+    box-shadow:0 40px 80px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute;
+    top:0;left:0;right:0;
+    height:6px;
+    background:linear-gradient(90deg,var(--brass),var(--brass-bright),var(--brass));
+  }
+  .inner{padding:36px 32px 32px;}
+  .eyebrow{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-weight:600;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 8px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  p.lede{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .card{
+    display:block;
+    text-decoration:none;
+    color:var(--ink);
+    border:1.5px solid var(--line);
+    border-radius:4px;
+    padding:20px 16px;
+    background:rgba(255,255,255,0.35);
+    transition:border-color .15s ease, background .15s ease, transform .05s ease;
+  }
+  .card:active{
+    transform:scale(0.97);
+    background:var(--paper-dim);
+  }
+  .card .icon{
+    font-size:26px;
+    margin-bottom:10px;
+    display:block;
+  }
+  .card .title{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    font-weight:700;
+    margin-bottom:4px;
+  }
+  .card .desc{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12.5px;
+    line-height:1.4;
+    color:var(--ink-soft);
+  }
+  .card.active{
+    border-color:var(--brass);
+    border-style:solid;
+  }
+  .card.soon{
+    opacity:0.5;
+    cursor:default;
+  }
+  .card.soon:active{transform:none;background:rgba(255,255,255,0.35);}
+  .badge{
+    display:inline-block;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:9.5px;
+    font-weight:700;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    background:var(--paper-dim);
+    padding:2px 6px;
+    border-radius:10px;
+    margin-top:6px;
+  }
+  .footnote{
+    margin-top:26px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
+  .footnote b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>PDF Tools</h1>
+    <p class="lede">Pick a tool. Everything runs locally in this browser tab — no file you open here is ever uploaded anywhere.</p>
+
+    <div class="grid">
+      <a class="card active" href="./unlock.html">
+        <span class="icon">🔓</span>
+        <div class="title">Unlock PDF</div>
+        <div class="desc">Remove an existing password from a protected PDF.</div>
+      </a>
+
+      <a class="card active" href="./lock.html">
+        <span class="icon">🔒</span>
+        <div class="title">Lock PDF</div>
+        <div class="desc">Add AES-256 password protection to a PDF.</div>
+      </a>
+
+      <a class="card active" href="./images.html">
+        <span class="icon">🖼️</span>
+        <div class="title">PDF → Images</div>
+        <div class="desc">Export every page as a PNG or JPEG.</div>
+      </a>
+
+      <a class="card active" href="./merge.html">
+        <span class="icon">📎</span>
+        <div class="title">Merge PDFs</div>
+        <div class="desc">Combine multiple files into one.</div>
+      </a>
+
+      <a class="card active" href="./images-to-pdf.html">
+        <span class="icon">📷</span>
+        <div class="title">Images → PDF</div>
+        <div class="desc">Combine photos into a single PDF.</div>
+      </a>
+
+      <a class="card active" href="./compress.html">
+        <span class="icon">🗜️</span>
+        <div class="title">Compress PDF</div>
+        <div class="desc">Shrink a PDF's file size.</div>
+      </a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> These tools load MuPDF compiled to WebAssembly and process your file in the browser's memory — the same engine desktop PDF apps use, just running locally instead of on a server. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

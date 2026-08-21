@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PDF → Images">
+<title>PDF → Images — export pages, on-device</title>
+<style>
+  :root{
+    --ink:#12181F;
+    --ink-soft:#2B3542;
+    --paper:#F6F4EF;
+    --paper-dim:#E9E5DC;
+    --brass:#9C7A3C;
+    --brass-bright:#C9A15A;
+    --ok:#3E6B4F;
+    --err:#A0402F;
+    --line:rgba(18,24,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Iowan Old Style","Georgia",serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+  }
+  .sheet{
+    width:100%;
+    max-width:460px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:2px;
+    box-shadow:0 40px 80px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute;
+    top:0;left:0;right:0;
+    height:6px;
+    background:linear-gradient(90deg,var(--brass),var(--brass-bright),var(--brass));
+  }
+  .inner{padding:36px 32px 32px;}
+  .eyebrow{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-weight:600;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 8px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  p.lede{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+  .field{margin-bottom:16px;}
+  label{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  .dropzone{
+    border:1.5px dashed var(--line);
+    border-radius:3px;
+    padding:22px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:rgba(255,255,255,0.35);
+  }
+  .dropzone:active{background:var(--paper-dim);}
+  .dropzone.has-file{
+    border-color:var(--brass);
+    border-style:solid;
+    background:rgba(156,122,60,0.08);
+  }
+  .dropzone .fname{
+    font-size:13.5px;
+    color:var(--ink);
+    font-weight:600;
+    word-break:break-word;
+  }
+  .dropzone .hint{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+  input[type="file"]{display:none;}
+
+  .segmented{
+    display:flex;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .segbtn{
+    flex:1;
+    padding:11px 8px;
+    text-align:center;
+    background:rgba(255,255,255,0.35);
+    border:none;
+    border-right:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .segbtn:last-child{border-right:none;}
+  .segbtn.active{
+    background:var(--ink);
+    color:var(--paper);
+  }
+  .fieldhint{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.45;
+  }
+
+  button.go{
+    width:100%;
+    margin-top:6px;
+    padding:15px;
+    border:none;
+    border-radius:3px;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.02em;
+    cursor:pointer;
+    transition:background .15s ease, transform .05s ease;
+  }
+  button.go:active{transform:scale(0.98);}
+  button.go:disabled{
+    background:#B9B2A3;
+    cursor:not-allowed;
+  }
+  .status{
+    margin-top:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    padding:12px 14px;
+    border-radius:3px;
+    display:none;
+  }
+  .status.show{display:block;}
+  .status.busy{background:rgba(18,24,31,0.06);color:var(--ink-soft);}
+  .status.ok{background:rgba(62,107,79,0.1);color:var(--ok);}
+  .status.err{background:rgba(160,64,47,0.1);color:var(--err);}
+  .result{
+    margin-top:16px;
+    display:none;
+  }
+  .result.show{display:block;}
+  a.download{
+    display:block;
+    text-align:center;
+    padding:15px;
+    border-radius:3px;
+    background:var(--brass);
+    color:var(--ink);
+    text-decoration:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-weight:600;
+    font-size:15px;
+  }
+  .footnote{
+    margin-top:22px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
+  .footnote b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>PDF → Images</h1>
+    <p class="lede">Pick a PDF and export every page as an image, bundled into a ZIP. Nothing is uploaded anywhere; the file never leaves this browser tab.</p>
+
+    <div class="field">
+      <label for="file">PDF file</label>
+      <div class="dropzone" id="dropzone">
+        <div class="fname" id="fname">Tap to choose a file</div>
+        <div class="hint" id="fhint">or drag one in</div>
+      </div>
+      <input type="file" id="file" accept="application/pdf,.pdf">
+    </div>
+
+    <div class="field">
+      <label>Format</label>
+      <div class="segmented" id="formatSeg">
+        <button type="button" class="segbtn active" data-format="png">PNG</button>
+        <button type="button" class="segbtn" data-format="jpeg">JPEG</button>
+      </div>
+      <div class="fieldhint" id="formatHint">Lossless — best quality, larger files.</div>
+    </div>
+
+    <div class="field">
+      <label>Resolution</label>
+      <div class="segmented" id="resSeg">
+        <button type="button" class="segbtn" data-scale="1">1×</button>
+        <button type="button" class="segbtn active" data-scale="2">2×</button>
+        <button type="button" class="segbtn" data-scale="3">3×</button>
+        <button type="button" class="segbtn" data-scale="4">4×</button>
+      </div>
+      <div class="fieldhint">Higher = crisper text and detail, but larger files and slower conversion. 2× is a good default for reading and printing.</div>
+    </div>
+
+    <button class="go" id="go" disabled>Choose a file to continue</button>
+
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <a class="download" id="downloadLink" download="pages.zip">Save images (ZIP)</a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and renders each page in your browser's memory — the same engine desktop PDF tools use, just running locally instead of on a server. All pages are bundled into a single ZIP file, built entirely in-browser. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <br><br>
+      <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import * as mupdf from "./mupdf.js";
+
+  // Safety cap: never let a single rendered page exceed this many
+  // pixels along its longest side, regardless of the resolution
+  // multiplier chosen — protects against oversized source pages
+  // running the browser tab out of memory.
+  const MAX_RENDER_DIMENSION = 4000;
+
+  const fileInput = document.getElementById('file');
+  const dropzone = document.getElementById('dropzone');
+  const fname = document.getElementById('fname');
+  const fhint = document.getElementById('fhint');
+  const goBtn = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const downloadLink = document.getElementById('downloadLink');
+  const formatSeg = document.getElementById('formatSeg');
+  const formatHint = document.getElementById('formatHint');
+  const resSeg = document.getElementById('resSeg');
+
+  let chosenFile = null;
+  let format = 'png';
+  let scale = 2;
+
+  formatSeg.addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    formatSeg.querySelectorAll('.segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    format = btn.dataset.format;
+    formatHint.textContent = format === 'png'
+      ? 'Lossless — best quality, larger files.'
+      : 'Compressed — smaller files, negligible quality loss for documents.';
+  });
+
+  resSeg.addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    resSeg.querySelectorAll('.segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    scale = parseInt(btn.dataset.scale, 10);
+  });
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  function setFile(f) {
+    chosenFile = f;
+    fname.textContent = f.name;
+    fhint.textContent = `${(f.size / 1024).toFixed(0)} KB`;
+    dropzone.classList.add('has-file');
+    updateButton();
+    resultEl.classList.remove('show');
+    hideStatus();
+  }
+
+  function updateButton() {
+    if (!chosenFile) {
+      goBtn.disabled = true;
+      goBtn.textContent = 'Choose a file to continue';
+    } else {
+      goBtn.disabled = false;
+      goBtn.textContent = 'Convert to images';
+    }
+  }
+
+  function showStatus(kind, msg) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = msg;
+  }
+  function hideStatus() {
+    statusEl.className = 'status';
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('File could not be read'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ── Minimal ZIP writer (STORE method — no compression) ──────────
+  // Good enough here since PNG/JPEG bytes are already compressed;
+  // re-compressing them in the ZIP itself would barely help and
+  // would cost real CPU time in the browser for no benefit.
+  function crc32(bytes) {
+    let table = crc32.table;
+    if (!table) {
+      table = crc32.table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function dosDateTime(date) {
+    const time = ((date.getHours() & 0x1F) << 11) | ((date.getMinutes() & 0x3F) << 5) | ((date.getSeconds() >> 1) & 0x1F);
+    const dosDate = (((date.getFullYear() - 1980) & 0x7F) << 9) | (((date.getMonth() + 1) & 0xF) << 5) | (date.getDate() & 0x1F);
+    return { time, dosDate };
+  }
+
+  function makeZip(files) {
+    const encoder = new TextEncoder();
+    const localParts = [], centralParts = [];
+    let offset = 0;
+    const { time, dosDate } = dosDateTime(new Date());
+
+    for (const file of files) {
+      const nameBytes = encoder.encode(file.name);
+      const crc = crc32(file.bytes);
+      const size = file.bytes.length;
+
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true);
+      lh.setUint16(4, 20, true);
+      lh.setUint16(6, 0, true);
+      lh.setUint16(8, 0, true);
+      lh.setUint16(10, time, true);
+      lh.setUint16(12, dosDate, true);
+      lh.setUint32(14, crc, true);
+      lh.setUint32(18, size, true);
+      lh.setUint32(22, size, true);
+      lh.setUint16(26, nameBytes.length, true);
+      lh.setUint16(28, 0, true);
+      const localBytes = new Uint8Array(lh.buffer);
+      localParts.push(localBytes, nameBytes, file.bytes);
+
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true);
+      ch.setUint16(4, 20, true);
+      ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0, true);
+      ch.setUint16(10, 0, true);
+      ch.setUint16(12, time, true);
+      ch.setUint16(14, dosDate, true);
+      ch.setUint32(16, crc, true);
+      ch.setUint32(20, size, true);
+      ch.setUint32(24, size, true);
+      ch.setUint16(28, nameBytes.length, true);
+      ch.setUint16(30, 0, true);
+      ch.setUint16(32, 0, true);
+      ch.setUint16(34, 0, true);
+      ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true);
+      ch.setUint32(42, offset, true);
+      centralParts.push(new Uint8Array(ch.buffer), nameBytes);
+
+      offset += localBytes.length + nameBytes.length + file.bytes.length;
+    }
+
+    const centralStart = offset;
+    let centralSize = 0;
+    for (const p of centralParts) centralSize += p.length;
+
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(4, 0, true);
+    eocd.setUint16(6, 0, true);
+    eocd.setUint16(8, files.length, true);
+    eocd.setUint16(10, files.length, true);
+    eocd.setUint32(12, centralSize, true);
+    eocd.setUint32(16, centralStart, true);
+    eocd.setUint16(20, 0, true);
+
+    const allParts = [...localParts, ...centralParts, new Uint8Array(eocd.buffer)];
+    let totalLen = 0;
+    for (const p of allParts) totalLen += p.length;
+    const out = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const p of allParts) { out.set(p, pos); pos += p.length; }
+    return out;
+  }
+  // ──────────────────────────────────────────────────────────────────
+
+  goBtn.addEventListener('click', async () => {
+    if (!chosenFile) return;
+    resultEl.classList.remove('show');
+    goBtn.disabled = true;
+    showStatus('busy', 'Reading file…');
+
+    try {
+      const rawBuffer = await readFileAsArrayBuffer(chosenFile);
+      const bytes = new Uint8Array(rawBuffer);
+
+      if (bytes.length === 0) {
+        showStatus('err', "The file came through empty (0 bytes). This can happen if it's an iCloud file that hasn't finished downloading — open it once in the Files app first, then try again.");
+        goBtn.disabled = false;
+        return;
+      }
+      const searchWindow = String.fromCharCode(...bytes.slice(0, 1024));
+      if (!searchWindow.includes('%PDF-')) {
+        const hexDump = Array.from(bytes.slice(0, 24)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        const asciiDump = Array.from(bytes.slice(0, 24)).map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+        showStatus('err', `This doesn't look like a PDF (${bytes.length} bytes). First 24 bytes — hex: ${hexDump} | text: ${asciiDump}`);
+        goBtn.disabled = false;
+        return;
+      }
+
+      showStatus('busy', 'Opening document…');
+      const doc = mupdf.Document.openDocument(bytes, "application/pdf");
+
+      if (doc.needsPassword()) {
+        showStatus('err', 'This PDF is password-protected. Unlock it first, then convert to images.');
+        goBtn.disabled = false;
+        return;
+      }
+
+      const pageCount = doc.countPages();
+      const baseName = chosenFile.name.replace(/\.pdf$/i, '');
+      const files = [];
+      const digits = String(pageCount).length;
+
+      for (let i = 0; i < pageCount; i++) {
+        showStatus('busy', `Rendering page ${i + 1}/${pageCount}…`);
+
+        const page = doc.loadPage(i);
+        const bounds = page.getBounds();
+        const srcW = bounds[2] - bounds[0];
+        const srcH = bounds[3] - bounds[1];
+
+        let renderScale = scale;
+        const longestSide = Math.max(srcW, srcH) * renderScale;
+        if (longestSide > MAX_RENDER_DIMENSION) {
+          renderScale *= MAX_RENDER_DIMENSION / longestSide;
+        }
+
+        const matrix = mupdf.Matrix.scale(renderScale, renderScale);
+        const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false);
+
+        const pageNum = String(i + 1).padStart(digits, '0');
+        let outBytes, ext;
+        if (format === 'jpeg') {
+          outBytes = pixmap.asJPEG(85, false);
+          ext = 'jpg';
+        } else {
+          outBytes = pixmap.asPNG();
+          ext = 'png';
+        }
+        files.push({ name: `${baseName}-page-${pageNum}.${ext}`, bytes: outBytes });
+
+        pixmap.destroy();
+        page.destroy();
+
+        // Yield between pages so the browser can reclaim memory.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      doc.destroy();
+
+      showStatus('busy', 'Building ZIP…');
+      const zipBytes = makeZip(files);
+      const blob = new Blob([zipBytes], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+
+      downloadLink.href = url;
+      downloadLink.download = `${baseName}-images.zip`;
+
+      showStatus('ok', `Converted ${pageCount} page${pageCount === 1 ? '' : 's'} to ${format.toUpperCase()}. Ready below.`);
+      resultEl.classList.add('show');
+      goBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      showStatus('err', 'Something went wrong converting this PDF: ' + (err.message || err));
+      goBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

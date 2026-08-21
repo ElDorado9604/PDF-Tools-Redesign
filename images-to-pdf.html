@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Images → PDF">
+<title>Images → PDF — combine photos, on-device</title>
+<style>
+  :root{
+    --ink:#12181F;
+    --ink-soft:#2B3542;
+    --paper:#F6F4EF;
+    --paper-dim:#E9E5DC;
+    --brass:#9C7A3C;
+    --brass-bright:#C9A15A;
+    --ok:#3E6B4F;
+    --err:#A0402F;
+    --line:rgba(18,24,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Iowan Old Style","Georgia",serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+  }
+  .sheet{
+    width:100%;
+    max-width:460px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:2px;
+    box-shadow:0 40px 80px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute;
+    top:0;left:0;right:0;
+    height:6px;
+    background:linear-gradient(90deg,var(--brass),var(--brass-bright),var(--brass));
+  }
+  .inner{padding:36px 32px 32px;}
+  .eyebrow{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-weight:600;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 8px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  p.lede{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+  .field{margin-bottom:16px;}
+  label{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  input[type="file"]{display:none;}
+
+  .camrow{
+    display:flex;
+    gap:10px;
+  }
+  .camtile{
+    flex:1;
+    border:1.5px dashed var(--line);
+    border-radius:3px;
+    padding:18px 12px;
+    text-align:center;
+    cursor:pointer;
+    background:rgba(255,255,255,0.35);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .camtile:active{background:var(--paper-dim);}
+  .camtile .icon{
+    font-size:22px;
+    display:block;
+    margin-bottom:6px;
+  }
+  .camtile .title{
+    font-size:13px;
+    font-weight:700;
+    color:var(--ink);
+  }
+
+  .filelist{
+    list-style:none;
+    margin:0 0 16px;
+    padding:0;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .filelist:empty{display:none;}
+  .filerow{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:11px 12px;
+    border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,0.35);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .filerow:last-child{border-bottom:none;}
+  .filerow .thumb{
+    width:40px;
+    height:40px;
+    border-radius:3px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:var(--paper-dim);
+    border:1px solid var(--line);
+  }
+  .filerow .pos{
+    font-size:12px;
+    font-weight:700;
+    color:var(--brass);
+    width:18px;
+    flex-shrink:0;
+  }
+  .filerow .meta{flex:1;min-width:0;}
+  .filerow .fn{
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .filerow .fs{
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+  .filerow .actions{
+    display:flex;
+    gap:2px;
+    flex-shrink:0;
+  }
+  .iconbtn{
+    width:28px;
+    height:28px;
+    border:none;
+    background:transparent;
+    color:var(--ink-soft);
+    font-size:15px;
+    cursor:pointer;
+    border-radius:3px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .iconbtn:active{background:var(--paper-dim);}
+  .iconbtn:disabled{opacity:0.25;cursor:default;}
+  .iconbtn.remove{color:var(--err);}
+  .iconbtn.crop.cropped{color:var(--brass);}
+
+  /* ── Crop editor overlay ── */
+  .cropModal{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(10,13,17,0.96);
+    z-index:1000;
+    flex-direction:column;
+  }
+  .cropModal.show{display:flex;}
+  .cropHeader{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 16px;
+    flex-shrink:0;
+  }
+  .cropIconBtn{
+    width:34px;
+    height:34px;
+    border:none;
+    border-radius:50%;
+    background:rgba(255,255,255,0.1);
+    color:var(--paper);
+    font-size:16px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .cropTitle{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14px;
+    font-weight:600;
+    color:var(--paper);
+  }
+  .cropTextBtn{
+    border:none;
+    background:none;
+    color:var(--brass-bright);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    padding:6px 4px;
+  }
+  .cropStage{
+    flex:1;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    touch-action:none;
+    padding:12px;
+    overflow:hidden;
+  }
+  .cropCanvasWrap{
+    position:relative;
+    touch-action:none;
+  }
+  .cropCanvasWrap img{
+    display:block;
+    width:100%;
+    height:100%;
+    user-select:none;
+    -webkit-user-select:none;
+    pointer-events:none;
+  }
+  .cropCanvasWrap svg{
+    position:absolute;
+    top:0;
+    left:0;
+    pointer-events:none;
+  }
+  .cropCanvasWrap polygon{
+    fill:rgba(201,161,90,0.18);
+    stroke:var(--brass-bright);
+    stroke-width:2;
+  }
+  .cropHandle{
+    position:absolute;
+    width:30px;
+    height:30px;
+    margin-left:-15px;
+    margin-top:-15px;
+    border-radius:50%;
+    background:var(--brass-bright);
+    border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    touch-action:none;
+    cursor:grab;
+  }
+  .cropFooter{
+    padding:14px 16px 22px;
+    flex-shrink:0;
+  }
+  .cropFooter .fieldhint{
+    color:var(--paper);
+    opacity:0.55;
+    text-align:center;
+    margin:0 0 12px;
+  }
+
+  button.go{
+    width:100%;
+    margin-top:6px;
+    padding:15px;
+    border:none;
+    border-radius:3px;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.02em;
+    cursor:pointer;
+    transition:background .15s ease, transform .05s ease;
+  }
+  button.go:active{transform:scale(0.98);}
+  button.go:disabled{
+    background:#B9B2A3;
+    cursor:not-allowed;
+  }
+  .status{
+    margin-top:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    padding:12px 14px;
+    border-radius:3px;
+    display:none;
+  }
+  .status.show{display:block;}
+  .status.busy{background:rgba(18,24,31,0.06);color:var(--ink-soft);}
+  .status.ok{background:rgba(62,107,79,0.1);color:var(--ok);}
+  .status.err{background:rgba(160,64,47,0.1);color:var(--err);}
+  .result{
+    margin-top:16px;
+    display:none;
+  }
+  .result.show{display:block;}
+  a.download{
+    display:block;
+    text-align:center;
+    padding:15px;
+    border-radius:3px;
+    background:var(--brass);
+    color:var(--ink);
+    text-decoration:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-weight:600;
+    font-size:15px;
+  }
+  .footnote{
+    margin-top:22px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
+  .footnote b{color:var(--ink);}
+
+  .segmented{
+    display:flex;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .segbtn{
+    flex:1;
+    padding:11px 8px;
+    text-align:center;
+    background:rgba(255,255,255,0.35);
+    border:none;
+    border-right:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .segbtn:last-child{border-right:none;}
+  .segbtn.active{
+    background:var(--ink);
+    color:var(--paper);
+  }
+  .fieldhint{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.45;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>Images → PDF</h1>
+    <p class="lede">Pick one or more photos, put them in the order you want, and combine them into a single PDF. Nothing is uploaded anywhere; the files never leave this browser tab.</p>
+
+    <div class="field">
+      <label>Add images</label>
+      <div class="camrow" id="dropWrap">
+        <button type="button" class="camtile" id="takePhotoBtn">
+          <span class="icon">📷</span>
+          <div class="title">Take a photo</div>
+        </button>
+        <button type="button" class="camtile" id="chooseLibraryBtn">
+          <span class="icon">🖼️</span>
+          <div class="title">Choose photos</div>
+        </button>
+      </div>
+      <div class="fieldhint" id="queueHint">or drag images in — pick several at once, or add more later</div>
+      <input type="file" id="cameraInput" accept="image/jpeg,image/png,.jpg,.jpeg,.png" capture="environment">
+      <input type="file" id="libraryInput" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple>
+    </div>
+
+    <ul class="filelist" id="filelist"></ul>
+
+    <div class="field">
+      <label>Page width</label>
+      <div class="segmented" id="widthSeg">
+        <button type="button" class="segbtn active" data-width="595">A4</button>
+        <button type="button" class="segbtn" data-width="612">Letter</button>
+        <button type="button" class="segbtn" data-width="0">Match 1st image</button>
+      </div>
+      <div class="fieldhint">Each image becomes one page at this width — height scales automatically to keep that image's own proportions, so nothing looks stretched.</div>
+    </div>
+
+    <div class="field">
+      <label>Quality</label>
+      <div class="segmented" id="qualitySeg">
+        <button type="button" class="segbtn active" data-quality="85">Standard</button>
+        <button type="button" class="segbtn" data-quality="95">High</button>
+      </div>
+      <div class="fieldhint">Standard is a good default for photos and scans. High keeps more detail at the cost of a larger file.</div>
+    </div>
+
+    <button class="go" id="go" disabled>Add at least 1 image</button>
+
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <a class="download" id="downloadLink" download="images.pdf">Save PDF</a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and builds the PDF in your browser's memory — the same engine desktop PDF tools use, just running locally instead of on a server. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <br><br>
+      <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
+    </div>
+  </div>
+</div>
+
+<div class="cropModal" id="cropModal">
+  <div class="cropHeader">
+    <button type="button" class="cropIconBtn" id="cropCancelBtn" aria-label="Cancel">✕</button>
+    <div class="cropTitle">Crop photo</div>
+    <button type="button" class="cropTextBtn" id="cropResetBtn">Reset</button>
+  </div>
+  <div class="cropStage" id="cropStage">
+    <div class="cropCanvasWrap" id="cropCanvasWrap">
+      <img id="cropImg" alt="">
+      <svg id="cropSvg"><polygon id="cropPolygon" points=""></polygon></svg>
+      <div class="cropHandle" id="cropHandle0"></div>
+      <div class="cropHandle" id="cropHandle1"></div>
+      <div class="cropHandle" id="cropHandle2"></div>
+      <div class="cropHandle" id="cropHandle3"></div>
+    </div>
+  </div>
+  <div class="cropFooter">
+    <div class="fieldhint">Drag the corners to select the area to keep — they don't have to form a straight rectangle.</div>
+    <button type="button" class="go" id="cropApplyBtn">Apply crop</button>
+  </div>
+</div>
+
+<script type="module">
+  import * as mupdf from "./mupdf.js";
+
+  // Safety cap: never let a single rendered image exceed this many
+  // pixels along its longest side, regardless of the source image's
+  // own resolution — protects against an unusually large photo
+  // running the browser tab out of memory.
+  const MAX_RENDER_DIMENSION = 4000;
+
+  const cameraInput = document.getElementById('cameraInput');
+  const libraryInput = document.getElementById('libraryInput');
+  const takePhotoBtn = document.getElementById('takePhotoBtn');
+  const chooseLibraryBtn = document.getElementById('chooseLibraryBtn');
+  const dropWrap = document.getElementById('dropWrap');
+  const queueHint = document.getElementById('queueHint');
+  const filelistEl = document.getElementById('filelist');
+  const goBtn = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const downloadLink = document.getElementById('downloadLink');
+  const widthSeg = document.getElementById('widthSeg');
+  const qualitySeg = document.getElementById('qualitySeg');
+
+  let pageWidthPt = 595; // A4 by default; 0 means "match first image"
+  let quality = 85;
+
+  widthSeg.addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    widthSeg.querySelectorAll('.segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    pageWidthPt = parseInt(btn.dataset.width, 10);
+  });
+
+  qualitySeg.addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    qualitySeg.querySelectorAll('.segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    quality = parseInt(btn.dataset.quality, 10);
+  });
+
+  // Each entry: { id, file }
+  let queue = [];
+  let nextId = 1;
+
+  takePhotoBtn.addEventListener('click', () => cameraInput.click());
+  chooseLibraryBtn.addEventListener('click', () => libraryInput.click());
+  dropWrap.addEventListener('dragover', e => { e.preventDefault(); });
+  dropWrap.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      addFiles(e.dataTransfer.files);
+    }
+  });
+  cameraInput.addEventListener('change', () => {
+    if (cameraInput.files.length) addFiles(cameraInput.files);
+    cameraInput.value = ''; // allow taking another photo next time
+  });
+  libraryInput.addEventListener('change', () => {
+    if (libraryInput.files.length) addFiles(libraryInput.files);
+    libraryInput.value = ''; // allow re-picking the same file later
+  });
+
+  function addFiles(fileList) {
+    for (const f of fileList) {
+      // Object URL is created once, up front, and reused across
+      // re-renders (rather than recreated every renderList() call) so
+      // we don't leak blob URLs — each is revoked in removeFile().
+      queue.push({ id: nextId++, file: f, previewUrl: URL.createObjectURL(f) });
+    }
+    renderList();
+    resultEl.classList.remove('show');
+    hideStatus();
+  }
+
+  function removeFile(id) {
+    const item = queue.find(it => it.id === id);
+    if (item) {
+      URL.revokeObjectURL(item.previewUrl);
+      if (item.croppedPreviewUrl) URL.revokeObjectURL(item.croppedPreviewUrl);
+    }
+    queue = queue.filter(item => item.id !== id);
+    renderList();
+  }
+
+  function moveFile(id, direction) {
+    const idx = queue.findIndex(item => item.id === id);
+    if (idx === -1) return;
+    const swapWith = idx + direction;
+    if (swapWith < 0 || swapWith >= queue.length) return;
+    [queue[idx], queue[swapWith]] = [queue[swapWith], queue[idx]];
+    renderList();
+  }
+
+  function renderList() {
+    filelistEl.innerHTML = '';
+    // Camera-captured photos on iOS are all literally named "image.jpg",
+    // so the filename alone can't tell them apart — number duplicates
+    // ("image.jpg (1)", "image.jpg (2)") in the order they appear here.
+    const nameSeen = new Map();
+    const displayNames = queue.map(item => {
+      const n = (nameSeen.get(item.file.name) || 0) + 1;
+      nameSeen.set(item.file.name, n);
+      return n;
+    });
+    const nameTotals = new Map();
+    for (const item of queue) nameTotals.set(item.file.name, (nameTotals.get(item.file.name) || 0) + 1);
+
+    queue.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.className = 'filerow';
+      const showSuffix = nameTotals.get(item.file.name) > 1;
+      const label = showSuffix ? `${item.file.name} (${displayNames[i]})` : item.file.name;
+      const isCropped = !!item.croppedBytes;
+      const sizeKB = isCropped ? (item.croppedBytes.length / 1024).toFixed(0) : (item.file.size / 1024).toFixed(0);
+      li.innerHTML = `
+        <img class="thumb" alt="">
+        <span class="pos">${i + 1}</span>
+        <span class="meta">
+          <div class="fn"></div>
+          <div class="fs">${sizeKB} KB${isCropped ? ' · Cropped' : ''}</div>
+        </span>
+        <span class="actions">
+          <button class="iconbtn crop${isCropped ? ' cropped' : ''}" title="Crop">&#9986;</button>
+          <button class="iconbtn up" ${i === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
+          <button class="iconbtn down" ${i === queue.length - 1 ? 'disabled' : ''} title="Move down">&#9660;</button>
+          <button class="iconbtn remove" title="Remove">&#10005;</button>
+        </span>
+      `;
+      li.querySelector('.thumb').src = item.croppedPreviewUrl || item.previewUrl;
+      li.querySelector('.fn').textContent = label;
+      li.querySelector('.crop').addEventListener('click', () => openCropEditor(item));
+      li.querySelector('.up').addEventListener('click', () => moveFile(item.id, -1));
+      li.querySelector('.down').addEventListener('click', () => moveFile(item.id, 1));
+      li.querySelector('.remove').addEventListener('click', () => removeFile(item.id));
+      filelistEl.appendChild(li);
+    });
+
+    if (queue.length === 0) {
+      queueHint.textContent = 'or drag images in — pick several at once, or add more later';
+    } else {
+      queueHint.textContent = `${queue.length} image${queue.length === 1 ? '' : 's'} added — tap a tile above to add more`;
+    }
+
+    if (queue.length < 1) {
+      goBtn.disabled = true;
+      goBtn.textContent = 'Add at least 1 image';
+    } else {
+      goBtn.disabled = false;
+      goBtn.textContent = `Create PDF from ${queue.length} image${queue.length === 1 ? '' : 's'}`;
+    }
+  }
+
+  function showStatus(kind, msg) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = msg;
+  }
+  function hideStatus() {
+    statusEl.className = 'status';
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('File could not be read'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ── Freestyle crop editor ──────────────────────────────────────────
+  // Corners are tracked as FRACTIONS (0–1) of the browser's own
+  // EXIF-corrected display dimensions, not absolute pixels. MuPDF also
+  // applies EXIF rotation when decoding, so orientation matches — but it
+  // can decode at a different absolute pixel scale (observed ~0.75x on
+  // some images, likely a DPI-metadata quirk), so raw pixel coordinates
+  // from the browser wouldn't line up with MuPDF's pixel space. Fractions
+  // sidestep that: they're scale-independent, only orientation/aspect
+  // need to match, and both were verified to agree across orientation
+  // values 1/3/6/8 before this was built.
+  const cropModal = document.getElementById('cropModal');
+  const cropStage = document.getElementById('cropStage');
+  const cropCanvasWrap = document.getElementById('cropCanvasWrap');
+  const cropImg = document.getElementById('cropImg');
+  const cropSvg = document.getElementById('cropSvg');
+  const cropPolygon = document.getElementById('cropPolygon');
+  const cropHandleEls = [0, 1, 2, 3].map(i => document.getElementById(`cropHandle${i}`));
+  const cropCancelBtn = document.getElementById('cropCancelBtn');
+  const cropResetBtn = document.getElementById('cropResetBtn');
+  const cropApplyBtn = document.getElementById('cropApplyBtn');
+
+  let cropItem = null;
+  let cropDisplayW = 0, cropDisplayH = 0;
+  let cropHandles = []; // [{x,y}, ...] in display px, order TL,TR,BR,BL
+
+  function defaultCropQuad() {
+    return [[0, 0], [1, 0], [1, 1], [0, 1]];
+  }
+
+  function renderCropHandles() {
+    cropHandles.forEach((h, i) => {
+      cropHandleEls[i].style.left = `${h.x}px`;
+      cropHandleEls[i].style.top = `${h.y}px`;
+    });
+    cropPolygon.setAttribute('points', cropHandles.map(h => `${h.x},${h.y}`).join(' '));
+  }
+
+  function openCropEditor(item) {
+    cropItem = item;
+    cropApplyBtn.disabled = false;
+    cropApplyBtn.textContent = 'Apply crop';
+    // Always crop from the ORIGINAL photo, never from a previous crop
+    // result, so repeated adjustments don't compound JPEG quality loss.
+    cropImg.src = item.previewUrl;
+    cropImg.onload = () => {
+      const maxW = cropStage.clientWidth - 24;
+      const maxH = cropStage.clientHeight - 24;
+      const nw = cropImg.naturalWidth, nh = cropImg.naturalHeight;
+      const scale = Math.min(maxW / nw, maxH / nh, 1);
+      cropDisplayW = Math.round(nw * scale);
+      cropDisplayH = Math.round(nh * scale);
+
+      cropCanvasWrap.style.width = `${cropDisplayW}px`;
+      cropCanvasWrap.style.height = `${cropDisplayH}px`;
+      cropSvg.setAttribute('width', cropDisplayW);
+      cropSvg.setAttribute('height', cropDisplayH);
+      cropSvg.setAttribute('viewBox', `0 0 ${cropDisplayW} ${cropDisplayH}`);
+
+      const quad = item.cropQuad || defaultCropQuad();
+      cropHandles = quad.map(([fx, fy]) => ({ x: fx * cropDisplayW, y: fy * cropDisplayH }));
+      renderCropHandles();
+    };
+    cropModal.classList.add('show');
+  }
+
+  function closeCropEditor() {
+    cropModal.classList.remove('show');
+    cropItem = null;
+  }
+
+  cropCancelBtn.addEventListener('click', closeCropEditor);
+
+  cropResetBtn.addEventListener('click', () => {
+    const quad = defaultCropQuad();
+    cropHandles = quad.map(([fx, fy]) => ({ x: fx * cropDisplayW, y: fy * cropDisplayH }));
+    renderCropHandles();
+  });
+
+  cropHandleEls.forEach((el, idx) => {
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', e => {
+      if (!el.hasPointerCapture(e.pointerId)) return;
+      const rect = cropCanvasWrap.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      let y = e.clientY - rect.top;
+      x = Math.max(0, Math.min(cropDisplayW, x));
+      y = Math.max(0, Math.min(cropDisplayH, y));
+      cropHandles[idx] = { x, y };
+      renderCropHandles();
+    });
+  });
+
+  cropApplyBtn.addEventListener('click', async () => {
+    if (!cropItem) return;
+    const item = cropItem;
+    cropApplyBtn.disabled = true;
+    cropApplyBtn.textContent = 'Cropping…';
+
+    try {
+      const fractionalQuad = cropHandles.map(h => [h.x / cropDisplayW, h.y / cropDisplayH]);
+
+      const rawBuffer = await readFileAsArrayBuffer(item.file);
+      const bytes = new Uint8Array(rawBuffer);
+      const doc = mupdf.Document.openDocument(bytes, item.file.name);
+      const page = doc.loadPage(0);
+      const pixmap = page.toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false);
+      const pw = pixmap.getWidth(), ph = pixmap.getHeight();
+      const quadPx = fractionalQuad.map(([fx, fy]) => [fx * pw, fy * ph]);
+
+      // Output size from the quad's own edge lengths (longest of top/
+      // bottom for width, longest of left/right for height) so an
+      // uneven freestyle quad doesn't get stretched or squashed.
+      const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const topLen = dist(quadPx[0], quadPx[1]);
+      const bottomLen = dist(quadPx[3], quadPx[2]);
+      const leftLen = dist(quadPx[0], quadPx[3]);
+      const rightLen = dist(quadPx[1], quadPx[2]);
+      let outW = Math.max(1, Math.round(Math.max(topLen, bottomLen)));
+      let outH = Math.max(1, Math.round(Math.max(leftLen, rightLen)));
+      outW = Math.min(outW, MAX_RENDER_DIMENSION);
+      outH = Math.min(outH, MAX_RENDER_DIMENSION);
+
+      const warped = pixmap.warp(quadPx, outW, outH);
+      const jpegBytes = warped.asJPEG(90, false);
+
+      if (item.croppedPreviewUrl) URL.revokeObjectURL(item.croppedPreviewUrl);
+      item.croppedBytes = jpegBytes;
+      item.cropQuad = fractionalQuad;
+      item.croppedPreviewUrl = URL.createObjectURL(new Blob([jpegBytes], { type: 'image/jpeg' }));
+
+      warped.destroy();
+      pixmap.destroy();
+      page.destroy();
+      doc.destroy();
+
+      closeCropEditor();
+      renderList();
+      showStatus('ok', 'Photo cropped.');
+    } catch (err) {
+      console.error(err);
+      closeCropEditor();
+      showStatus('err', 'Something went wrong cropping that photo: ' + (err.message || err));
+    } finally {
+      cropApplyBtn.disabled = false;
+      cropApplyBtn.textContent = 'Apply crop';
+    }
+  });
+
+  // A handful of magic-byte checks so we can give a clear error
+  // instead of a cryptic MuPDF failure for a non-image file.
+  function looksLikeSupportedImage(bytes) {
+    if (bytes.length < 8) return false;
+    // JPEG: FF D8 FF
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return true;
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return true;
+    return false;
+  }
+
+  goBtn.addEventListener('click', async () => {
+    if (queue.length < 1) return;
+    resultEl.classList.remove('show');
+    goBtn.disabled = true;
+
+    try {
+      // Read and validate every file first, so we fail before doing
+      // any conversion work if something's wrong. Cropped items use the
+      // already-cropped bytes directly instead of re-reading the
+      // original file.
+      const images = [];
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        let bytes;
+
+        if (item.croppedBytes) {
+          bytes = item.croppedBytes;
+        } else {
+          showStatus('busy', `Reading ${item.file.name} (${i + 1}/${queue.length})…`);
+          const rawBuffer = await readFileAsArrayBuffer(item.file);
+          bytes = new Uint8Array(rawBuffer);
+        }
+
+        if (bytes.length === 0) {
+          showStatus('err', `"${item.file.name}" came through empty (0 bytes). It may be an iCloud file that hasn't finished downloading.`);
+          goBtn.disabled = false;
+          return;
+        }
+        if (!looksLikeSupportedImage(bytes)) {
+          showStatus('err', `"${item.file.name}" doesn't look like a JPEG or PNG. Only those two formats are supported right now.`);
+          goBtn.disabled = false;
+          return;
+        }
+        images.push({ name: item.file.name, bytes });
+      }
+
+      showStatus('busy', 'Building PDF…');
+      const target = new mupdf.PDFDocument();
+      let insertAt = 0;
+      let resolvedTargetW = pageWidthPt; // 0 means "match first image", resolved below
+
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        showStatus('busy', `Adding ${img.name} (${i + 1}/${images.length})…`);
+
+        const imgDoc = mupdf.Document.openDocument(img.bytes, img.name);
+        const imgPage = imgDoc.loadPage(0);
+        const bounds = imgPage.getBounds();
+        const srcW = bounds[2] - bounds[0];
+        const srcH = bounds[3] - bounds[1];
+
+        if (resolvedTargetW === 0) {
+          resolvedTargetW = srcW; // first image sets the width for "Match 1st image" mode
+        }
+
+        let scale = resolvedTargetW / srcW;
+        const targetH = srcH * scale;
+
+        // Clamp so the rendered pixmap's longest side never exceeds
+        // MAX_RENDER_DIMENSION.
+        const renderedW = srcW * scale;
+        const renderedH = srcH * scale;
+        const longestSide = Math.max(renderedW, renderedH);
+        if (longestSide > MAX_RENDER_DIMENSION) {
+          scale *= MAX_RENDER_DIMENSION / longestSide;
+        }
+
+        const pixmap = imgPage.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false);
+        const jpegBytes = pixmap.asJPEG(quality, false);
+        const imgObj = target.addRawStream(jpegBytes, {
+          Type: "XObject",
+          Subtype: "Image",
+          Width: pixmap.getWidth(),
+          Height: pixmap.getHeight(),
+          ColorSpace: "DeviceRGB",
+          BitsPerComponent: 8,
+          Filter: "DCTDecode",
+        });
+
+        pixmap.destroy();
+        imgPage.destroy();
+        imgDoc.destroy();
+
+        const resources = target.newDictionary();
+        const xobj = target.newDictionary();
+        xobj.put("Im0", imgObj);
+        resources.put("XObject", xobj);
+
+        const content = `q ${resolvedTargetW} 0 0 ${targetH} 0 0 cm /Im0 Do Q`;
+        const pageObj = target.addPage([0, 0, resolvedTargetW, targetH], 0, resources, content);
+        target.insertPage(insertAt, pageObj);
+        insertAt++;
+
+        // Yield to the browser between images so it has a chance to
+        // actually reclaim freed memory before the next allocation.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      showStatus('busy', 'Saving…');
+      const buf = target.saveToBuffer("");
+      const outBytes = buf.asUint8Array();
+      const blob = new Blob([outBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      downloadLink.href = url;
+      downloadLink.download = 'images.pdf';
+
+      showStatus('ok', `Created a ${target.countPages()}-page PDF from ${images.length} image${images.length === 1 ? '' : 's'}. Ready below.`);
+      resultEl.classList.add('show');
+      goBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      showStatus('err', 'Something went wrong building this PDF: ' + (err.message || err));
+      goBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

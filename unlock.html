@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Unlock PDF">
+<title>Unlock PDF — remove password, on-device</title>
+<style>
+  :root{
+    --ink:#12181F;
+    --ink-soft:#2B3542;
+    --paper:#F6F4EF;
+    --paper-dim:#E9E5DC;
+    --brass:#9C7A3C;
+    --brass-bright:#C9A15A;
+    --ok:#3E6B4F;
+    --err:#A0402F;
+    --line:rgba(18,24,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Iowan Old Style","Georgia",serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+  }
+  .sheet{
+    width:100%;
+    max-width:460px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:2px;
+    box-shadow:0 40px 80px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute;
+    top:0;left:0;right:0;
+    height:6px;
+    background:linear-gradient(90deg,var(--brass),var(--brass-bright),var(--brass));
+  }
+  .inner{padding:36px 32px 32px;}
+  .eyebrow{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-weight:600;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 8px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  p.lede{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+  .field{margin-bottom:16px;}
+  label{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  .dropzone{
+    border:1.5px dashed var(--line);
+    border-radius:3px;
+    padding:22px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:rgba(255,255,255,0.35);
+  }
+  .dropzone:active{background:var(--paper-dim);}
+  .dropzone.has-file{
+    border-color:var(--brass);
+    border-style:solid;
+    background:rgba(156,122,60,0.08);
+  }
+  .dropzone .fname{
+    font-size:13.5px;
+    color:var(--ink);
+    font-weight:600;
+    word-break:break-word;
+  }
+  .dropzone .hint{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+  input[type="file"]{display:none;}
+  .pwinput{
+    width:100%;
+    padding:13px 14px;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:16px;
+    color:var(--ink);
+  }
+  .pwinput:focus{
+    outline:none;
+    border-color:var(--brass);
+  }
+  .showpw{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-top:9px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13px;
+    color:var(--ink-soft);
+  }
+  button.go{
+    width:100%;
+    margin-top:6px;
+    padding:15px;
+    border:none;
+    border-radius:3px;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.02em;
+    cursor:pointer;
+    transition:background .15s ease, transform .05s ease;
+  }
+  button.go:active{transform:scale(0.98);}
+  button.go:disabled{
+    background:#B9B2A3;
+    cursor:not-allowed;
+  }
+  .status{
+    margin-top:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    padding:12px 14px;
+    border-radius:3px;
+    display:none;
+  }
+  .status.show{display:block;}
+  .status.busy{background:rgba(18,24,31,0.06);color:var(--ink-soft);}
+  .status.ok{background:rgba(62,107,79,0.1);color:var(--ok);}
+  .status.err{background:rgba(160,64,47,0.1);color:var(--err);}
+  .result{
+    margin-top:16px;
+    display:none;
+  }
+  .result.show{display:block;}
+  a.download{
+    display:block;
+    text-align:center;
+    padding:15px;
+    border-radius:3px;
+    background:var(--brass);
+    color:var(--ink);
+    text-decoration:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-weight:600;
+    font-size:15px;
+  }
+  .footnote{
+    margin-top:22px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
+  .footnote b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>Unlock a PDF</h1>
+    <p class="lede">Drop in a password-protected file — a Form 16, say — enter its password, and get back the same document with no password required. Nothing is uploaded anywhere; the file never leaves this browser tab.</p>
+
+    <div class="field">
+      <label for="file">PDF file</label>
+      <div class="dropzone" id="dropzone">
+        <div class="fname" id="fname">Tap to choose a file</div>
+        <div class="hint" id="fhint">or drag one in</div>
+      </div>
+      <input type="file" id="file" accept="application/pdf,.pdf">
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" class="pwinput" placeholder="Enter the PDF's password" autocomplete="off" autocapitalize="off" autocorrect="off">
+      <div class="showpw">
+        <input type="checkbox" id="showpw">
+        <label for="showpw" style="margin:0;text-transform:none;font-weight:400;letter-spacing:0;">Show password</label>
+      </div>
+    </div>
+
+    <button class="go" id="go" disabled>Choose a file to continue</button>
+
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <a class="download" id="downloadLink" download="unlocked.pdf">Save unlocked PDF</a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and runs the decryption in your browser's memory — the same engine desktop PDF tools use, just running locally instead of on a server. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <br><br>
+      <a href="./lock.html" style="color:var(--brass);">Need to add a password instead? →</a>
+      &nbsp;·&nbsp;
+      <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import * as mupdf from "./mupdf.js";
+
+  const fileInput = document.getElementById('file');
+  const dropzone = document.getElementById('dropzone');
+  const fname = document.getElementById('fname');
+  const fhint = document.getElementById('fhint');
+  const passwordInput = document.getElementById('password');
+  const showpw = document.getElementById('showpw');
+  const goBtn = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const downloadLink = document.getElementById('downloadLink');
+
+  let chosenFile = null;
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  function setFile(f) {
+    chosenFile = f;
+    fname.textContent = f.name;
+    fhint.textContent = `${(f.size / 1024).toFixed(0)} KB`;
+    dropzone.classList.add('has-file');
+    updateButton();
+    resultEl.classList.remove('show');
+    hideStatus();
+  }
+
+  showpw.addEventListener('change', () => {
+    passwordInput.type = showpw.checked ? 'text' : 'password';
+  });
+
+  passwordInput.addEventListener('input', updateButton);
+
+  function updateButton() {
+    if (!chosenFile) {
+      goBtn.disabled = true;
+      goBtn.textContent = 'Choose a file to continue';
+    } else {
+      goBtn.disabled = false;
+      goBtn.textContent = 'Remove password';
+    }
+  }
+
+  function showStatus(kind, msg) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = msg;
+  }
+  function hideStatus() {
+    statusEl.className = 'status';
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('File could not be read'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  goBtn.addEventListener('click', async () => {
+    if (!chosenFile) return;
+    resultEl.classList.remove('show');
+    goBtn.disabled = true;
+    showStatus('busy', 'Reading file…');
+
+    try {
+      const rawBuffer = await readFileAsArrayBuffer(chosenFile);
+      const bytes = new Uint8Array(rawBuffer);
+
+      if (bytes.length === 0) {
+        showStatus('err', "The file came through empty (0 bytes). This can happen if it's an iCloud file that hasn't finished downloading — open it once in the Files app first, then try again.");
+        goBtn.disabled = false;
+        return;
+      }
+      // The %PDF- marker doesn't have to be at byte 0 — some generators
+      // prepend a few bytes before it — so scan the first 1KB for it,
+      // which is what PDF readers themselves tolerate.
+      const searchWindow = String.fromCharCode(...bytes.slice(0, 1024));
+      if (!searchWindow.includes('%PDF-')) {
+        const hexDump = Array.from(bytes.slice(0, 24)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        const asciiDump = Array.from(bytes.slice(0, 24)).map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+        showStatus('err', `This doesn't look like a PDF (${bytes.length} bytes). First 24 bytes — hex: ${hexDump} | text: ${asciiDump}`);
+        goBtn.disabled = false;
+        return;
+      }
+
+      showStatus('busy', 'Opening document…');
+      const doc = mupdf.Document.openDocument(bytes, "application/pdf");
+
+      if (doc.needsPassword()) {
+        const pw = passwordInput.value || '';
+        const ok = doc.authenticatePassword(pw);
+        if (!ok) {
+          showStatus('err', "That password didn't work. Double-check it and try again.");
+          goBtn.disabled = false;
+          return;
+        }
+      }
+
+      showStatus('busy', 'Rewriting without encryption…');
+      const pdf = doc.asPDF();
+      if (!pdf) {
+        showStatus('err', "This file doesn't look like a standard PDF MuPDF can rewrite.");
+        goBtn.disabled = false;
+        return;
+      }
+
+      const buf = pdf.saveToBuffer("encrypt=none");
+      const outBytes = buf.asUint8Array();
+      const blob = new Blob([outBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      const outName = chosenFile.name.replace(/\.pdf$/i, '') + '-unlocked.pdf';
+      downloadLink.href = url;
+      downloadLink.download = outName;
+
+      showStatus('ok', 'Password removed. Your unlocked copy is ready below.');
+      resultEl.classList.add('show');
+      goBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      showStatus('err', 'Something went wrong reading this PDF: ' + (err.message || err));
+      goBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

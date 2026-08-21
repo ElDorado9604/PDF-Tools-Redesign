@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#12181F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Merge PDFs">
+<title>Merge PDFs — combine files, on-device</title>
+<style>
+  :root{
+    --ink:#12181F;
+    --ink-soft:#2B3542;
+    --paper:#F6F4EF;
+    --paper-dim:#E9E5DC;
+    --brass:#9C7A3C;
+    --brass-bright:#C9A15A;
+    --ok:#3E6B4F;
+    --err:#A0402F;
+    --line:rgba(18,24,31,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Iowan Old Style","Georgia",serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+  }
+  .sheet{
+    width:100%;
+    max-width:460px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:2px;
+    box-shadow:0 40px 80px -20px rgba(0,0,0,0.6);
+    overflow:hidden;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute;
+    top:0;left:0;right:0;
+    height:6px;
+    background:linear-gradient(90deg,var(--brass),var(--brass-bright),var(--brass));
+  }
+  .inner{padding:36px 32px 32px;}
+  .eyebrow{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-weight:600;
+    margin-bottom:10px;
+  }
+  h1{
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 8px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  p.lede{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+  .field{margin-bottom:16px;}
+  label{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  .dropzone{
+    border:1.5px dashed var(--line);
+    border-radius:3px;
+    padding:22px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:rgba(255,255,255,0.35);
+  }
+  .dropzone:active{background:var(--paper-dim);}
+  .dropzone .fname{
+    font-size:13.5px;
+    color:var(--ink);
+    font-weight:600;
+  }
+  .dropzone .hint{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+  input[type="file"]{display:none;}
+
+  .filelist{
+    list-style:none;
+    margin:0 0 16px;
+    padding:0;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .filelist:empty{display:none;}
+  .filerow{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:11px 12px;
+    border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,0.35);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .filerow:last-child{border-bottom:none;}
+  .filerow .pos{
+    font-size:12px;
+    font-weight:700;
+    color:var(--brass);
+    width:18px;
+    flex-shrink:0;
+  }
+  .filerow .meta{flex:1;min-width:0;}
+  .filerow .fn{
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .filerow .fs{
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+  .filerow .actions{
+    display:flex;
+    gap:2px;
+    flex-shrink:0;
+  }
+  .iconbtn{
+    width:28px;
+    height:28px;
+    border:none;
+    background:transparent;
+    color:var(--ink-soft);
+    font-size:15px;
+    cursor:pointer;
+    border-radius:3px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .iconbtn:active{background:var(--paper-dim);}
+  .iconbtn:disabled{opacity:0.25;cursor:default;}
+  .iconbtn.remove{color:var(--err);}
+
+  button.go{
+    width:100%;
+    margin-top:6px;
+    padding:15px;
+    border:none;
+    border-radius:3px;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.02em;
+    cursor:pointer;
+    transition:background .15s ease, transform .05s ease;
+  }
+  button.go:active{transform:scale(0.98);}
+  button.go:disabled{
+    background:#B9B2A3;
+    cursor:not-allowed;
+  }
+  .status{
+    margin-top:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:13.5px;
+    line-height:1.5;
+    padding:12px 14px;
+    border-radius:3px;
+    display:none;
+  }
+  .status.show{display:block;}
+  .status.busy{background:rgba(18,24,31,0.06);color:var(--ink-soft);}
+  .status.ok{background:rgba(62,107,79,0.1);color:var(--ok);}
+  .status.err{background:rgba(160,64,47,0.1);color:var(--err);}
+  .result{
+    margin-top:16px;
+    display:none;
+  }
+  .result.show{display:block;}
+  a.download{
+    display:block;
+    text-align:center;
+    padding:15px;
+    border-radius:3px;
+    background:var(--brass);
+    color:var(--ink);
+    text-decoration:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-weight:600;
+    font-size:15px;
+  }
+  .footnote{
+    margin-top:22px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:11.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
+  .footnote b{color:var(--ink);}
+
+  .option{
+    display:flex;
+    align-items:flex-start;
+    gap:11px;
+    padding:13px 14px;
+    margin-bottom:16px;
+    border:1.5px solid var(--line);
+    border-radius:3px;
+    background:rgba(255,255,255,0.35);
+  }
+  .option input[type="checkbox"]{
+    width:19px;
+    height:19px;
+    margin:1px 0 0;
+    flex-shrink:0;
+    accent-color:var(--brass);
+  }
+  .option .opttext{flex:1;min-width:0;}
+  .option .optrow{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .option label{
+    margin:0;
+    font-size:13.5px;
+    font-weight:600;
+    text-transform:none;
+    letter-spacing:0;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .infobtn{
+    width:17px;
+    height:17px;
+    border-radius:50%;
+    border:1.3px solid var(--ink-soft);
+    color:var(--ink-soft);
+    background:none;
+    font-size:11px;
+    line-height:1;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+    padding:0;
+  }
+  .optinfo{
+    display:none;
+    margin-top:8px;
+    font-size:12px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    border-top:1px solid var(--line);
+    padding-top:8px;
+  }
+  .optinfo.show{display:block;}
+  .optinfo b{color:var(--ink);}
+
+  .suboption{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--line);
+  }
+  .suboption input[type="checkbox"]{
+    width:17px;
+    height:17px;
+    margin:1px 0 0;
+    flex-shrink:0;
+    accent-color:var(--brass);
+  }
+  .suboption label{
+    margin:0;
+    font-size:13px;
+    font-weight:600;
+    text-transform:none;
+    letter-spacing:0;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .suboption .subdesc{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin-top:2px;
+    line-height:1.4;
+  }
+  .suboption.disabled label{color:var(--ink-soft);cursor:default;}
+  .suboption.disabled{opacity:0.55;}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>Merge PDFs</h1>
+    <p class="lede">Pick two or more PDFs, put them in the order you want, and combine them into a single file. Nothing is uploaded anywhere; the files never leave this browser tab.</p>
+
+    <div class="field">
+      <label for="file">Add PDFs</label>
+      <div class="dropzone" id="dropzone">
+        <div class="fname" id="fname">Tap to choose files</div>
+        <div class="hint" id="fhint">or drag them in — pick several at once, or add more later</div>
+      </div>
+      <input type="file" id="file" accept="application/pdf,.pdf" multiple>
+    </div>
+
+    <ul class="filelist" id="filelist"></ul>
+
+    <div class="option">
+      <input type="checkbox" id="normalizeCheckbox">
+      <div class="opttext">
+        <div class="optrow">
+          <label for="normalizeCheckbox">Match page sizes</label>
+          <button type="button" class="infobtn" id="normalizeInfoBtn" aria-label="More info">i</button>
+        </div>
+        <div class="optinfo" id="normalizeInfo">
+          Scales every page to match the <b>width</b> of the first PDF's first page — useful if your files are different sizes and pages currently come out narrower or wider than each other.
+          <br><br>
+          <b>Trade-off:</b> normalized pages are rendered as images, not live text. Text on those pages won't be selectable, searchable, or copyable afterward. Leave this off if your files are already a consistent size, or if you need to keep selectable text.
+        </div>
+
+        <div class="suboption disabled" id="sharperRow">
+          <input type="checkbox" id="sharperCheckbox" disabled>
+          <div>
+            <label for="sharperCheckbox">Sharper text</label>
+            <div class="subdesc">Renders at a higher resolution for crisper text — larger file size. Only applies when "Match page sizes" is on.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="go" id="go" disabled>Add at least 2 PDFs</button>
+
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <a class="download" id="downloadLink" download="merged.pdf">Save merged PDF</a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and combines the PDFs in your browser's memory — the same engine desktop PDF tools use, just running locally instead of on a server. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <br><br>
+      <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import * as mupdf from "./mupdf.js";
+
+  // Rendering resolution used only when "Match page sizes" is checked.
+  // Normal = 2x, "Sharper text" sub-option bumps it to 3x.
+  const RENDER_SCALE_NORMAL = 2;
+  const RENDER_SCALE_SHARP = 3;
+
+  const fileInput = document.getElementById('file');
+  const dropzone = document.getElementById('dropzone');
+  const fname = document.getElementById('fname');
+  const fhint = document.getElementById('fhint');
+  const filelistEl = document.getElementById('filelist');
+  const goBtn = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const downloadLink = document.getElementById('downloadLink');
+  const normalizeCheckbox = document.getElementById('normalizeCheckbox');
+  const normalizeInfoBtn = document.getElementById('normalizeInfoBtn');
+  const normalizeInfo = document.getElementById('normalizeInfo');
+  const sharperCheckbox = document.getElementById('sharperCheckbox');
+  const sharperRow = document.getElementById('sharperRow');
+
+  normalizeInfoBtn.addEventListener('click', () => {
+    normalizeInfo.classList.toggle('show');
+  });
+
+  normalizeCheckbox.addEventListener('change', () => {
+    const on = normalizeCheckbox.checked;
+    sharperCheckbox.disabled = !on;
+    sharperRow.classList.toggle('disabled', !on);
+    if (!on) sharperCheckbox.checked = false;
+  });
+
+  // Each entry: { id, file }
+  let queue = [];
+  let nextId = 1;
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      addFiles(e.dataTransfer.files);
+    }
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = ''; // allow re-picking the same file later
+  });
+
+  function addFiles(fileList) {
+    for (const f of fileList) {
+      queue.push({ id: nextId++, file: f });
+    }
+    renderList();
+    resultEl.classList.remove('show');
+    hideStatus();
+  }
+
+  function removeFile(id) {
+    queue = queue.filter(item => item.id !== id);
+    renderList();
+  }
+
+  function moveFile(id, direction) {
+    const idx = queue.findIndex(item => item.id === id);
+    if (idx === -1) return;
+    const swapWith = idx + direction;
+    if (swapWith < 0 || swapWith >= queue.length) return;
+    [queue[idx], queue[swapWith]] = [queue[swapWith], queue[idx]];
+    renderList();
+  }
+
+  function renderList() {
+    filelistEl.innerHTML = '';
+    queue.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.className = 'filerow';
+      li.innerHTML = `
+        <span class="pos">${i + 1}</span>
+        <span class="meta">
+          <div class="fn"></div>
+          <div class="fs">${(item.file.size / 1024).toFixed(0)} KB</div>
+        </span>
+        <span class="actions">
+          <button class="iconbtn up" ${i === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
+          <button class="iconbtn down" ${i === queue.length - 1 ? 'disabled' : ''} title="Move down">&#9660;</button>
+          <button class="iconbtn remove" title="Remove">&#10005;</button>
+        </span>
+      `;
+      li.querySelector('.fn').textContent = item.file.name;
+      li.querySelector('.up').addEventListener('click', () => moveFile(item.id, -1));
+      li.querySelector('.down').addEventListener('click', () => moveFile(item.id, 1));
+      li.querySelector('.remove').addEventListener('click', () => removeFile(item.id));
+      filelistEl.appendChild(li);
+    });
+
+    if (queue.length === 0) {
+      fname.textContent = 'Tap to choose files';
+      fhint.textContent = 'or drag them in — pick several at once, or add more later';
+    } else {
+      fname.textContent = `${queue.length} file${queue.length === 1 ? '' : 's'} added`;
+      fhint.textContent = 'Tap here to add more';
+    }
+
+    if (queue.length < 2) {
+      goBtn.disabled = true;
+      goBtn.textContent = queue.length === 0 ? 'Add at least 2 PDFs' : 'Add 1 more PDF';
+    } else {
+      goBtn.disabled = false;
+      goBtn.textContent = `Merge ${queue.length} PDFs`;
+    }
+  }
+
+  function showStatus(kind, msg) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = msg;
+  }
+  function hideStatus() {
+    statusEl.className = 'status';
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('File could not be read'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  goBtn.addEventListener('click', async () => {
+    if (queue.length < 2) return;
+    resultEl.classList.remove('show');
+    goBtn.disabled = true;
+
+    try {
+      // Read and validate every file first, so we fail before doing
+      // any merging work if something's wrong.
+      const docs = [];
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        showStatus('busy', `Reading ${item.file.name} (${i + 1}/${queue.length})…`);
+
+        const rawBuffer = await readFileAsArrayBuffer(item.file);
+        const bytes = new Uint8Array(rawBuffer);
+
+        if (bytes.length === 0) {
+          showStatus('err', `"${item.file.name}" came through empty (0 bytes). It may be an iCloud file that hasn't finished downloading.`);
+          goBtn.disabled = false;
+          return;
+        }
+        const searchWindow = String.fromCharCode(...bytes.slice(0, 1024));
+        if (!searchWindow.includes('%PDF-')) {
+          showStatus('err', `"${item.file.name}" doesn't look like a PDF (${bytes.length} bytes, no %PDF- marker found).`);
+          goBtn.disabled = false;
+          return;
+        }
+
+        const doc = mupdf.Document.openDocument(bytes, "application/pdf");
+        if (doc.needsPassword()) {
+          showStatus('err', `"${item.file.name}" is password-protected. Unlock it first, then merge.`);
+          goBtn.disabled = false;
+          return;
+        }
+        const pdf = doc.asPDF();
+        if (!pdf) {
+          showStatus('err', `"${item.file.name}" doesn't look like a standard PDF MuPDF can combine.`);
+          goBtn.disabled = false;
+          return;
+        }
+        docs.push({ name: item.file.name, doc, pdf });
+      }
+
+      showStatus('busy', 'Combining pages…');
+
+      const normalize = normalizeCheckbox.checked;
+      const renderScaleBase = sharperCheckbox.checked ? RENDER_SCALE_SHARP : RENDER_SCALE_NORMAL;
+      let target;
+      let outBytes;
+
+      if (normalize) {
+        // Build a fresh document, rendering every source page into a
+        // page sized to match the first PDF's first-page width, with
+        // height scaled to preserve that page's own aspect ratio.
+        target = new mupdf.PDFDocument();
+        const firstBounds = docs[0].doc.loadPage(0).getBounds();
+        const targetW = firstBounds[2] - firstBounds[0];
+        let insertAt = 0;
+
+        // Safety cap: never let a single rendered page exceed this many
+        // pixels along its longest side, regardless of RENDER_SCALE.
+        // Without this, an unusually large source page combined with
+        // the "Sharper text" option can try to allocate an enormous
+        // pixmap in one go and crash the browser tab.
+        const MAX_RENDER_DIMENSION = 3000;
+
+        for (let i = 0; i < docs.length; i++) {
+          const src = docs[i];
+          const pageCount = src.doc.countPages();
+          for (let p = 0; p < pageCount; p++) {
+            showStatus('busy', `Rendering ${src.name}, page ${p + 1}/${pageCount}…`);
+            const page = src.doc.loadPage(p);
+            const bounds = page.getBounds();
+            const srcW = bounds[2] - bounds[0];
+            const srcH = bounds[3] - bounds[1];
+
+            const scale = targetW / srcW;
+            const targetH = srcH * scale;
+            let renderScale = scale * renderScaleBase;
+
+            // Clamp so the rendered pixmap's longest side never exceeds
+            // MAX_RENDER_DIMENSION, capping worst-case memory per page.
+            const renderedW = srcW * renderScale;
+            const renderedH = srcH * renderScale;
+            const longestSide = Math.max(renderedW, renderedH);
+            if (longestSide > MAX_RENDER_DIMENSION) {
+              renderScale *= MAX_RENDER_DIMENSION / longestSide;
+            }
+
+            const matrix = mupdf.Matrix.scale(renderScale, renderScale);
+            const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false);
+
+            // Embed as a compressed JPEG instead of raw pixel data.
+            // Raw RGB storage for one page can easily run 10-30x larger
+            // than a JPEG of the same page, and that raw data has to
+            // sit in memory for every page until the final save — with
+            // many pages that adds up fast and is what was causing the
+            // realloc/OOM crash. JPEG at this quality is visually
+            // lossless for text/document content at these sizes.
+            const jpegBytes = pixmap.asJPEG(85, false);
+            const imgObj = target.addRawStream(jpegBytes, {
+              Type: "XObject",
+              Subtype: "Image",
+              Width: pixmap.getWidth(),
+              Height: pixmap.getHeight(),
+              ColorSpace: "DeviceRGB",
+              BitsPerComponent: 8,
+              Filter: "DCTDecode",
+            });
+
+            // Free this page's render immediately — the pixel data is
+            // already copied into the output PDF at this point, so
+            // holding onto these objects until GC gets around to them
+            // just lets memory pile up across a multi-page merge.
+            pixmap.destroy();
+            page.destroy();
+
+            const resources = target.newDictionary();
+            const xobj = target.newDictionary();
+            xobj.put("Im0", imgObj);
+            resources.put("XObject", xobj);
+
+            const content = `q ${targetW} 0 0 ${targetH} 0 0 cm /Im0 Do Q`;
+            const pageObj = target.addPage([0, 0, targetW, targetH], 0, resources, content);
+            target.insertPage(insertAt, pageObj);
+            insertAt++;
+
+            // Yield to the browser between pages so it has a chance to
+            // actually reclaim freed memory before the next allocation.
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+
+        // Safe to free every source document now — target is a brand
+        // new, independent PDFDocument that doesn't reuse any of
+        // their underlying data.
+        for (const d of docs) {
+          d.doc.destroy();
+        }
+      } else {
+        // Vector merge — keeps original text/quality, but pages keep
+        // their own original size.
+        target = docs[0].pdf;
+        let insertAt = docs[0].doc.countPages();
+
+        for (let i = 1; i < docs.length; i++) {
+          const src = docs[i];
+          const pageCount = src.doc.countPages();
+          for (let p = 0; p < pageCount; p++) {
+            target.graftPage(insertAt, src.pdf, p);
+            insertAt++;
+          }
+        }
+      }
+
+      showStatus('busy', 'Saving…');
+      const buf = target.saveToBuffer("");
+      outBytes = buf.asUint8Array();
+      const blob = new Blob([outBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      downloadLink.href = url;
+      downloadLink.download = 'merged.pdf';
+
+      showStatus('ok', `Merged ${docs.length} files into one ${target.countPages()}-page PDF. Ready below.`);
+      resultEl.classList.add('show');
+      goBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      showStatus('err', 'Something went wrong merging these PDFs: ' + (err.message || err));
+      goBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>
