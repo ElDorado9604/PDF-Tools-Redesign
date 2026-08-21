@@ -538,7 +538,7 @@
   };
 
   const KEYWORDS = {
-    js: new Set('abstract as async await boolean break byte case catch char class const continue debugger default delete do double else enum export extends false final finally float for from function get goto if implements import in instanceof int interface let long native new null of package private protected public return set short static super switch synchronized this throw throws transient true try typeof var void volatile while with yield'.split(' ')),
+    js: new Set('abstract as async await boolean break byte case catch char class const continue debugger default delete do double else enum export extends false final finally float for from function get goto if implements import in instanceof int interface let long native new null of package private protected public return set short static super switch synchronized this throw throws transient true try typeof var void volatile while with yield type namespace declare module readonly satisfies keyof infer never unknown any'.split(' ')),
     py: new Set('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self cls'.split(' ')),
     java: new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record sealed permits yields'.split(' ')),
     go: new Set('break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var true false nil iota'.split(' ')),
@@ -702,106 +702,201 @@
     return EXT_LANG[ext] || null;
   }
 
-  // ── Syntax highlighter ───────────────────────────────────────────
-  function tokenizeLine(line, lang) {
+  // ── Syntax highlighter (stateful — correct multi-line comments/strings) ──
+  // Returns: Array<Array<{text, color}>>  — one token list per source line
+  function tokenizeSource(rawText, lang) {
+    const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const sourceLines = text.split('\n');
     if (!lang || !KEYWORDS[lang]) {
-      return [{ text: line, color: C.text }];
+      return sourceLines.map(line => [{ text: line, color: C.text }]);
     }
+
     const kw = KEYWORDS[lang];
-    const tokens = [];
-    let i = 0;
-    const n = line.length;
+    const isPy = lang === 'py';
+    const isCStyle = lang === 'js' || lang === 'java' || lang === 'c' || lang === 'go' || lang === 'rs' || lang === 'css';
+    const hashComments = isPy || lang === 'sh' || lang === 'sql';
 
-    const push = (text, color) => {
-      if (!text) return;
-      tokens.push({ text, color });
-    };
+    // State carried across lines
+    let mode = 'code'; // 'code' | 'block_comment' | 'string'
+    let stringDelim = null; // '"', "'", '`', '"""', "'''"
 
-    while (i < n) {
-      // Whitespace
-      if (/\s/.test(line[i])) {
-        let j = i;
-        while (j < n && /\s/.test(line[j])) j++;
-        push(line.slice(i, j), C.text);
-        i = j;
-        continue;
-      }
+    const result = [];
 
-      // Line comment
-      if (lang === 'py' || lang === 'sh' || lang === 'sql' || lang === 'rb') {
-        if (line[i] === '#') {
-          push(line.slice(i), C.comment);
-          break;
-        }
-      }
-      if (lang !== 'py' && lang !== 'sh' && lang !== 'sql') {
-        if (line[i] === '/' && line[i + 1] === '/') {
-          push(line.slice(i), C.comment);
-          break;
-        }
-      }
-      // Block comment start (single-line portion)
-      if (line[i] === '/' && line[i + 1] === '*') {
-        const end = line.indexOf('*/', i + 2);
+    for (let line of sourceLines) {
+      const tokens = [];
+      let i = 0;
+      const n = line.length;
+
+      const push = (t, color) => {
+        if (t === undefined || t === null || t === '') return;
+        tokens.push({ text: t, color });
+      };
+
+      // Continue multi-line string or block comment from previous line
+      if (mode === 'block_comment') {
+        const end = line.indexOf('*/');
         if (end >= 0) {
-          push(line.slice(i, end + 2), C.comment);
+          push(line.slice(0, end + 2), C.comment);
           i = end + 2;
+          mode = 'code';
+        } else {
+          push(line, C.comment);
+          result.push(tokens.length ? tokens : [{ text: '', color: C.text }]);
           continue;
         }
-        push(line.slice(i), C.comment);
-        break;
       }
 
-      // Strings
-      if (line[i] === '"' || line[i] === "'" || line[i] === '`') {
-        const q = line[i];
-        let j = i + 1;
-        while (j < n) {
-          if (line[j] === '\\') { j += 2; continue; }
-          if (line[j] === q) { j++; break; }
-          j++;
-        }
-        push(line.slice(i, j), C.string);
-        i = j;
-        continue;
-      }
-
-      // Numbers
-      if (/[0-9]/.test(line[i]) || (line[i] === '.' && /[0-9]/.test(line[i + 1]))) {
-        let j = i;
-        while (j < n && /[0-9._xXa-fA-F]/.test(line[j])) j++;
-        push(line.slice(i, j), C.number);
-        i = j;
-        continue;
-      }
-
-      // Identifiers / keywords / functions
-      if (/[A-Za-z_$]/.test(line[i])) {
-        let j = i;
-        while (j < n && /[A-Za-z0-9_$]/.test(line[j])) j++;
-        const word = line.slice(i, j);
-        // Peek for function call
-        let k = j;
-        while (k < n && /\s/.test(line[k])) k++;
-        const isFn = line[k] === '(';
-        if (kw.has(word)) {
-          push(word, C.keyword);
-        } else if (isFn) {
-          push(word, C.function);
-        } else if (/^[A-Z]/.test(word) && word.length > 1) {
-          push(word, C.type);
+      if (mode === 'string') {
+        // Find closing delimiter (handle escapes for single-char quotes)
+        let closed = false;
+        let j = 0;
+        if (stringDelim === '"""' || stringDelim === "'''") {
+          const idx = line.indexOf(stringDelim);
+          if (idx >= 0) {
+            push(line.slice(0, idx + 3), C.string);
+            i = idx + 3;
+            mode = 'code';
+            stringDelim = null;
+            closed = true;
+          }
         } else {
-          push(word, C.text);
+          while (j < n) {
+            if (line[j] === '\\') { j += 2; continue; }
+            if (line[j] === stringDelim) {
+              push(line.slice(0, j + 1), C.string);
+              i = j + 1;
+              mode = 'code';
+              stringDelim = null;
+              closed = true;
+              break;
+            }
+            j++;
+          }
         }
-        i = j;
-        continue;
+        if (!closed) {
+          push(line, C.string);
+          result.push(tokens.length ? tokens : [{ text: '', color: C.text }]);
+          continue;
+        }
       }
 
-      // Single punctuation
-      push(line[i], C.text);
-      i++;
+      // Normal code scanning on this line (may start new string/comment)
+      while (i < n) {
+        // Whitespace
+        if (/\s/.test(line[i])) {
+          let j = i;
+          while (j < n && /\s/.test(line[j])) j++;
+          push(line.slice(i, j), C.text);
+          i = j;
+          continue;
+        }
+
+        // Python / shell / SQL line comment
+        if (hashComments && line[i] === '#') {
+          push(line.slice(i), C.comment);
+          break;
+        }
+
+        // C-style line comment //
+        if (isCStyle && line[i] === '/' && line[i + 1] === '/') {
+          push(line.slice(i), C.comment);
+          break;
+        }
+
+        // C-style block comment /* ... */
+        if (isCStyle && line[i] === '/' && line[i + 1] === '*') {
+          const end = line.indexOf('*/', i + 2);
+          if (end >= 0) {
+            push(line.slice(i, end + 2), C.comment);
+            i = end + 2;
+            continue;
+          }
+          // Continues on next lines
+          push(line.slice(i), C.comment);
+          mode = 'block_comment';
+          break;
+        }
+
+        // Python triple-quoted strings (docstrings)
+        if (isPy && (line.startsWith('"""', i) || line.startsWith("'''", i))) {
+          const delim = line.slice(i, i + 3);
+          const end = line.indexOf(delim, i + 3);
+          if (end >= 0) {
+            push(line.slice(i, end + 3), C.string);
+            i = end + 3;
+            continue;
+          }
+          push(line.slice(i), C.string);
+          mode = 'string';
+          stringDelim = delim;
+          break;
+        }
+
+        // Single/double/backtick strings
+        if (line[i] === '"' || line[i] === "'" || (line[i] === '`' && isCStyle)) {
+          const q = line[i];
+          let j = i + 1;
+          let closed = false;
+          while (j < n) {
+            if (line[j] === '\\') { j += 2; continue; }
+            if (line[j] === q) { j++; closed = true; break; }
+            j++;
+          }
+          push(line.slice(i, j), C.string);
+          if (!closed) {
+            // Unclosed single-line string — treat rest as string, reset next line
+            // (Python single quotes don't span lines; JS template literals can —
+            //  we only span for ` when C-style)
+            if (q === '`' && isCStyle) {
+              mode = 'string';
+              stringDelim = '`';
+            }
+            break;
+          }
+          i = j;
+          continue;
+        }
+
+        // Numbers
+        if (/[0-9]/.test(line[i]) || (line[i] === '.' && /[0-9]/.test(line[i + 1] || ''))) {
+          let j = i;
+          while (j < n && /[0-9._xXa-fA-F]/.test(line[j])) j++;
+          push(line.slice(i, j), C.number);
+          i = j;
+          continue;
+        }
+
+        // Identifiers / keywords / functions / types
+        if (/[A-Za-z_$]/.test(line[i])) {
+          let j = i;
+          while (j < n && /[A-Za-z0-9_$]/.test(line[j])) j++;
+          const word = line.slice(i, j);
+          let k = j;
+          while (k < n && /\s/.test(line[k])) k++;
+          const isFn = line[k] === '(';
+          if (kw.has(word)) push(word, C.keyword);
+          else if (isFn) push(word, C.function);
+          else if (/^[A-Z]/.test(word) && word.length > 1) push(word, C.type);
+          else push(word, C.text);
+          i = j;
+          continue;
+        }
+
+        // Single character
+        push(line[i], C.text);
+        i++;
+      }
+
+      result.push(tokens.length ? tokens : [{ text: '', color: C.text }]);
     }
-    return tokens.length ? tokens : [{ text: line, color: C.text }];
+
+    return result;
+  }
+
+  // Keep a thin wrapper for markdown code fences (single-line context)
+  function tokenizeLine(line, lang) {
+    const rows = tokenizeSource(line, lang);
+    return rows[0] || [{ text: line, color: C.text }];
   }
 
   function wrapTokens(tokens, maxChars) {
@@ -970,11 +1065,11 @@
     const gutter = showLines ? Math.max(28, maxLineNo * charW + 14) : 0;
     const maxChars = Math.max(20, Math.floor((pageW - margin * 2 - gutter) / charW));
 
-    const sourceLines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    // Stateful tokenize so multi-line /* */ and Python """ """ stay correct
+    const tokenizedLines = tokenizeSource(rawText, lang);
     const displayLines = [];
 
-    sourceLines.forEach((src, idx) => {
-      const tokens = tokenizeLine(src, lang);
+    tokenizedLines.forEach((tokens, idx) => {
       const wrapped = wrapTokens(tokens, maxChars);
       wrapped.forEach((toks, wi) => {
         displayLines.push({
