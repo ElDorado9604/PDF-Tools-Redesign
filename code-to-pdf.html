@@ -439,7 +439,7 @@
   <div class="inner">
     <div class="eyebrow">Runs entirely on this device</div>
     <h1>Code → PDF</h1>
-    <p class="lede">Turn source files or pasted code into a clean, monospace PDF. Nothing is uploaded — everything stays in this browser tab.</p>
+    <p class="lede">Turn source files or pasted code into a clean PDF with syntax colors. Markdown files are rendered as a formatted preview. Nothing is uploaded — everything stays in this browser tab.</p>
 
     <div class="field">
       <label for="file">Code / text files</label>
@@ -493,7 +493,7 @@
     </div>
 
     <div class="footnote">
-      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and builds a PDF with the Courier monospace font entirely in your browser. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <b>How it works.</b> Code files get syntax colors (keywords, strings, comments, functions…). Markdown files are rendered as a formatted preview. Everything runs offline with MuPDF in your browser.
       <br><br>
       <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
     </div>
@@ -520,10 +520,54 @@
     letter: { w: 612,    h: 792 }
   };
 
+  // Syntax colors (PDF RGB 0–1)
+  const C = {
+    text:     [0.12, 0.16, 0.22],
+    keyword:  [0.22, 0.35, 0.75],
+    string:   [0.12, 0.52, 0.32],
+    comment:  [0.42, 0.48, 0.55],
+    number:   [0.75, 0.40, 0.12],
+    function: [0.55, 0.25, 0.70],
+    type:     [0.15, 0.55, 0.60],
+    header:   [0.10, 0.12, 0.18],
+    muted:    [0.45, 0.45, 0.50],
+    rule:     [0.85, 0.85, 0.88],
+    mdH1:     [0.10, 0.12, 0.20],
+    mdH2:     [0.18, 0.22, 0.35],
+    mdCodeBg: [0.95, 0.96, 0.98],
+  };
+
+  const KEYWORDS = {
+    js: new Set('abstract as async await boolean break byte case catch char class const continue debugger default delete do double else enum export extends false final finally float for from function get goto if implements import in instanceof int interface let long native new null of package private protected public return set short static super switch synchronized this throw throws transient true try typeof var void volatile while with yield'.split(' ')),
+    py: new Set('False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self cls'.split(' ')),
+    java: new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record sealed permits yields'.split(' ')),
+    go: new Set('break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var true false nil iota'.split(' ')),
+    rs: new Set('as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while yield'.split(' ')),
+    c: new Set('auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while true false NULL'.split(' ')),
+    sql: new Set('select from where join left right inner outer on and or not null as insert into values update set delete create table index view alter drop primary key foreign references distinct group by order having limit offset union all exists between like in is'.split(' ')),
+    sh: new Set('if then else elif fi for while do done case esac function in select until export local return exit echo read set unset declare'.split(' ')),
+    html: new Set('html head body div span a img script style link meta title class id href src alt type rel'.split(' ')),
+    css: new Set('important media keyframes from to hover focus active before after root'.split(' ')),
+  };
+
+  const EXT_LANG = {
+    js: 'js', mjs: 'js', cjs: 'js', jsx: 'js', ts: 'js', tsx: 'js', vue: 'js',
+    py: 'py', pyw: 'py',
+    java: 'java', kt: 'java', kts: 'java', scala: 'java',
+    go: 'go',
+    rs: 'rs',
+    c: 'c', h: 'c', cpp: 'c', cc: 'c', cxx: 'c', hpp: 'c', hh: 'c', cs: 'java',
+    sql: 'sql',
+    sh: 'sh', bash: 'sh', zsh: 'sh',
+    html: 'html', htm: 'html',
+    css: 'css', scss: 'css', less: 'css',
+    json: 'js',
+    rb: 'py', php: 'js', swift: 'java', dart: 'java', r: 'py', lua: 'py', pl: 'py',
+  };
+
   let pageSize = 'a4';
   let fontSize = 10;
-  let items = []; // { id, name, text }
-
+  let items = [];
   let nextId = 1;
 
   // ── Segmented controls ──────────────────────────────────────────
@@ -554,7 +598,6 @@
     if (fileInput.files?.length) addFiles(fileInput.files);
     fileInput.value = '';
   });
-
   pasteEl.addEventListener('input', updateButton);
 
   async function addFiles(fileList) {
@@ -577,11 +620,13 @@
     items.forEach((item, i) => {
       const li = document.createElement('li');
       li.className = 'filerow';
+      const ext = (item.name.split('.').pop() || '').toLowerCase();
+      const kind = ext === 'md' || ext === 'markdown' ? 'Markdown preview' : (EXT_LANG[ext] ? 'Syntax highlight' : 'Plain text');
       li.innerHTML = `
         <span class="pos">${i + 1}</span>
         <span class="meta">
           <div class="fn"></div>
-          <div class="fs">${item.text.length.toLocaleString()} chars · ${item.text.split('\n').length} lines</div>
+          <div class="fs">${item.text.length.toLocaleString()} chars · ${item.text.split('\n').length} lines · ${kind}</div>
         </span>
         <span class="actions">
           <button class="iconbtn up" ${i === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
@@ -639,115 +684,575 @@
 
   // ── PDF helpers ──────────────────────────────────────────────────
   function escapePdfString(s) {
-    return s
+    return String(s)
       .replace(/\\/g, '\\\\')
       .replace(/\(/g, '\\(')
       .replace(/\)/g, '\\)')
       .replace(/\r/g, '')
-      .replace(/[^\x09\x20-\x7E]/g, ch => {
-        // Keep printable ASCII; replace others with '?'
-        return '?';
-      });
+      .replace(/[^\x09\x20-\x7E]/g, () => '?');
   }
 
-  function wrapLine(line, maxChars) {
-    if (line.length <= maxChars) return [line];
+  function rgb(c) {
+    return `${c[0].toFixed(3)} ${c[1].toFixed(3)} ${c[2].toFixed(3)} rg`;
+  }
+
+  function detectLang(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    if (ext === 'md' || ext === 'markdown') return 'md';
+    return EXT_LANG[ext] || null;
+  }
+
+  // ── Syntax highlighter ───────────────────────────────────────────
+  function tokenizeLine(line, lang) {
+    if (!lang || !KEYWORDS[lang]) {
+      return [{ text: line, color: C.text }];
+    }
+    const kw = KEYWORDS[lang];
+    const tokens = [];
+    let i = 0;
+    const n = line.length;
+
+    const push = (text, color) => {
+      if (!text) return;
+      tokens.push({ text, color });
+    };
+
+    while (i < n) {
+      // Whitespace
+      if (/\s/.test(line[i])) {
+        let j = i;
+        while (j < n && /\s/.test(line[j])) j++;
+        push(line.slice(i, j), C.text);
+        i = j;
+        continue;
+      }
+
+      // Line comment
+      if (lang === 'py' || lang === 'sh' || lang === 'sql' || lang === 'rb') {
+        if (line[i] === '#') {
+          push(line.slice(i), C.comment);
+          break;
+        }
+      }
+      if (lang !== 'py' && lang !== 'sh' && lang !== 'sql') {
+        if (line[i] === '/' && line[i + 1] === '/') {
+          push(line.slice(i), C.comment);
+          break;
+        }
+      }
+      // Block comment start (single-line portion)
+      if (line[i] === '/' && line[i + 1] === '*') {
+        const end = line.indexOf('*/', i + 2);
+        if (end >= 0) {
+          push(line.slice(i, end + 2), C.comment);
+          i = end + 2;
+          continue;
+        }
+        push(line.slice(i), C.comment);
+        break;
+      }
+
+      // Strings
+      if (line[i] === '"' || line[i] === "'" || line[i] === '`') {
+        const q = line[i];
+        let j = i + 1;
+        while (j < n) {
+          if (line[j] === '\\') { j += 2; continue; }
+          if (line[j] === q) { j++; break; }
+          j++;
+        }
+        push(line.slice(i, j), C.string);
+        i = j;
+        continue;
+      }
+
+      // Numbers
+      if (/[0-9]/.test(line[i]) || (line[i] === '.' && /[0-9]/.test(line[i + 1]))) {
+        let j = i;
+        while (j < n && /[0-9._xXa-fA-F]/.test(line[j])) j++;
+        push(line.slice(i, j), C.number);
+        i = j;
+        continue;
+      }
+
+      // Identifiers / keywords / functions
+      if (/[A-Za-z_$]/.test(line[i])) {
+        let j = i;
+        while (j < n && /[A-Za-z0-9_$]/.test(line[j])) j++;
+        const word = line.slice(i, j);
+        // Peek for function call
+        let k = j;
+        while (k < n && /\s/.test(line[k])) k++;
+        const isFn = line[k] === '(';
+        if (kw.has(word)) {
+          push(word, C.keyword);
+        } else if (isFn) {
+          push(word, C.function);
+        } else if (/^[A-Z]/.test(word) && word.length > 1) {
+          push(word, C.type);
+        } else {
+          push(word, C.text);
+        }
+        i = j;
+        continue;
+      }
+
+      // Single punctuation
+      push(line[i], C.text);
+      i++;
+    }
+    return tokens.length ? tokens : [{ text: line, color: C.text }];
+  }
+
+  function wrapTokens(tokens, maxChars) {
+    // Wrap token stream into lines of maxChars, preserving colors
+    const lines = [];
+    let cur = [];
+    let len = 0;
+
+    const flush = () => {
+      if (cur.length) lines.push(cur);
+      cur = [];
+      len = 0;
+    };
+
+    for (const tok of tokens) {
+      let rest = tok.text;
+      while (rest.length) {
+        const room = maxChars - len;
+        if (room <= 0) { flush(); continue; }
+        if (rest.length <= room) {
+          cur.push({ text: rest, color: tok.color });
+          len += rest.length;
+          rest = '';
+        } else {
+          // Prefer break at space
+          let breakAt = rest.lastIndexOf(' ', room);
+          if (breakAt < room * 0.4) breakAt = room;
+          cur.push({ text: rest.slice(0, breakAt), color: tok.color });
+          rest = rest.slice(breakAt).replace(/^\s+/, '');
+          flush();
+        }
+      }
+    }
+    flush();
+    return lines.length ? lines : [[{ text: '', color: C.text }]];
+  }
+
+  // ── Markdown parser (lightweight) ────────────────────────────────
+  function parseMarkdown(text) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const blocks = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Fenced code
+      if (/^```/.test(line)) {
+        const lang = line.slice(3).trim();
+        const code = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) {
+          code.push(lines[i]);
+          i++;
+        }
+        i++; // skip closing
+        blocks.push({ type: 'code', lang, lines: code });
+        continue;
+      }
+
+      // Heading
+      const hm = line.match(/^(#{1,6})\s+(.*)$/);
+      if (hm) {
+        blocks.push({ type: 'heading', level: hm[1].length, text: hm[2] });
+        i++;
+        continue;
+      }
+
+      // HR
+      if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line)) {
+        blocks.push({ type: 'hr' });
+        i++;
+        continue;
+      }
+
+      // Unordered list
+      if (/^\s*[-*+]\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*[-*+]\s+/, ''));
+          i++;
+        }
+        blocks.push({ type: 'ul', items });
+        continue;
+      }
+
+      // Ordered list
+      if (/^\s*\d+\.\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
+          i++;
+        }
+        blocks.push({ type: 'ol', items });
+        continue;
+      }
+
+      // Empty
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+
+      // Paragraph (merge consecutive non-blank)
+      const para = [line];
+      i++;
+      while (i < lines.length && lines[i].trim() &&
+             !/^#{1,6}\s/.test(lines[i]) &&
+             !/^```/.test(lines[i]) &&
+             !/^\s*[-*+]\s+/.test(lines[i]) &&
+             !/^\s*\d+\.\s+/.test(lines[i]) &&
+             !/^(\*{3,}|-{3,}|_{3,})\s*$/.test(lines[i])) {
+        para.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'p', text: para.join(' ') });
+    }
+    return blocks;
+  }
+
+  // Inline MD: **bold** *italic* `code`
+  function parseInline(text) {
+    const spans = [];
+    const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|[^*`]+)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const s = m[0];
+      if (s.startsWith('**') && s.endsWith('**')) {
+        spans.push({ text: s.slice(2, -2), style: 'bold' });
+      } else if (s.startsWith('*') && s.endsWith('*')) {
+        spans.push({ text: s.slice(1, -1), style: 'italic' });
+      } else if (s.startsWith('`') && s.endsWith('`')) {
+        spans.push({ text: s.slice(1, -1), style: 'code' });
+      } else {
+        spans.push({ text: s, style: 'normal' });
+      }
+    }
+    return spans.length ? spans : [{ text, style: 'normal' }];
+  }
+
+  function wrapPlain(text, maxChars) {
+    if (text.length <= maxChars) return [text];
     const out = [];
-    let rest = line;
+    let rest = text;
     while (rest.length > maxChars) {
-      // Prefer breaking at a space if possible
       let breakAt = rest.lastIndexOf(' ', maxChars);
-      if (breakAt < maxChars * 0.5) breakAt = maxChars;
+      if (breakAt < maxChars * 0.4) breakAt = maxChars;
       out.push(rest.slice(0, breakAt));
       rest = rest.slice(breakAt).replace(/^\s+/, '');
     }
-    if (rest.length) out.push(rest);
+    if (rest) out.push(rest);
     return out;
   }
 
-  function buildPagesForSource(name, rawText, opts) {
+  // ── Build display rows for code (with highlight) ─────────────────
+  function buildCodePages(name, rawText, lang, opts) {
     const { pageW, pageH, fontSize, showLines, margin } = opts;
-    const lineH = fontSize * 1.35;
+    const lineH = fontSize * 1.4;
     const headerH = 28;
     const topY = pageH - margin - headerH;
-    const bottomY = margin + 20;
+    const bottomY = margin + 18;
     const usableH = topY - bottomY;
     const linesPerPage = Math.max(1, Math.floor(usableH / lineH));
-
-    // Approx char width for Courier at fontSize (Courier is ~0.6em wide)
     const charW = fontSize * 0.6;
-    const gutter = showLines ? Math.max(28, String(rawText.split('\n').length).length * charW + 12) : 0;
-    const textWidth = pageW - margin * 2 - gutter;
-    const maxChars = Math.max(20, Math.floor(textWidth / charW));
+    const maxLineNo = String(rawText.split('\n').length).length;
+    const gutter = showLines ? Math.max(28, maxLineNo * charW + 14) : 0;
+    const maxChars = Math.max(20, Math.floor((pageW - margin * 2 - gutter) / charW));
 
     const sourceLines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    const displayLines = []; // { text, lineNo }
+    const displayLines = [];
 
     sourceLines.forEach((src, idx) => {
-      const wrapped = wrapLine(src, maxChars);
-      wrapped.forEach((chunk, wi) => {
+      const tokens = tokenizeLine(src, lang);
+      const wrapped = wrapTokens(tokens, maxChars);
+      wrapped.forEach((toks, wi) => {
         displayLines.push({
-          text: chunk,
+          tokens: toks,
           lineNo: wi === 0 ? (idx + 1) : null
         });
       });
     });
 
-    if (displayLines.length === 0) {
-      displayLines.push({ text: '', lineNo: 1 });
-    }
+    if (!displayLines.length) displayLines.push({ tokens: [{ text: '', color: C.text }], lineNo: 1 });
 
     const pages = [];
     for (let start = 0; start < displayLines.length; start += linesPerPage) {
-      const chunk = displayLines.slice(start, start + linesPerPage);
-      pages.push({ name, lines: chunk, isFirst: start === 0 });
+      pages.push({
+        kind: 'code',
+        name,
+        lines: displayLines.slice(start, start + linesPerPage),
+        gutter,
+        lineH
+      });
     }
     return pages;
   }
 
-  function pageContentStream(pageInfo, opts) {
+  // ── Build display rows for markdown preview ──────────────────────
+  function buildMdPages(name, rawText, opts) {
+    const { pageW, pageH, fontSize, margin } = opts;
+    const blocks = parseMarkdown(rawText);
+    const bodySize = Math.max(10, fontSize + 1);
+    const charW = bodySize * 0.5; // Helvetica approx
+    const maxChars = Math.max(30, Math.floor((pageW - margin * 2) / charW));
+    const rows = []; // { type, ... }
+
+    rows.push({ type: 'title', text: name });
+
+    for (const b of blocks) {
+      if (b.type === 'heading') {
+        const sizes = [0, 20, 16, 14, 12, 11, 11];
+        const size = sizes[b.level] || 12;
+        const wrapped = wrapPlain(b.text, Math.floor(maxChars * (bodySize / size)));
+        wrapped.forEach((t, i) => rows.push({ type: 'h', level: b.level, text: t, size, first: i === 0 }));
+      } else if (b.type === 'p') {
+        const spans = parseInline(b.text);
+        // Flatten to plain for wrapping simplicity, keep style runs short
+        let buf = '';
+        const styleRuns = [];
+        for (const s of spans) {
+          for (const ch of s.text) {
+            buf += ch;
+            styleRuns.push(s.style);
+          }
+          buf += '';
+        }
+        const wrapped = wrapPlain(spans.map(s => s.text).join(''), maxChars);
+        // Re-parse each wrapped line for inline styles (simple: re-parse)
+        wrapped.forEach(t => {
+          rows.push({ type: 'p', spans: parseInline(t), size: bodySize });
+        });
+        rows.push({ type: 'gap', h: 6 });
+      } else if (b.type === 'ul' || b.type === 'ol') {
+        b.items.forEach((item, idx) => {
+          const bullet = b.type === 'ul' ? '• ' : `${idx + 1}. `;
+          const wrapped = wrapPlain(bullet + item, maxChars);
+          wrapped.forEach((t, wi) => {
+            rows.push({
+              type: 'li',
+              text: wi === 0 ? t : t.replace(/^[•\d.]+\s*/, '  '),
+              size: bodySize
+            });
+          });
+        });
+        rows.push({ type: 'gap', h: 6 });
+      } else if (b.type === 'code') {
+        const codeCharW = (fontSize) * 0.6;
+        const codeMax = Math.max(20, Math.floor((pageW - margin * 2 - 16) / codeCharW));
+        const lang = EXT_LANG[b.lang] || null;
+        rows.push({ type: 'codeStart' });
+        for (const cl of b.lines) {
+          const tokens = tokenizeLine(cl, lang);
+          const wrapped = wrapTokens(tokens, codeMax);
+          for (const toks of wrapped) {
+            rows.push({ type: 'codeLine', tokens: toks, size: fontSize });
+          }
+        }
+        rows.push({ type: 'codeEnd' });
+        rows.push({ type: 'gap', h: 8 });
+      } else if (b.type === 'hr') {
+        rows.push({ type: 'hr' });
+      }
+    }
+
+    // Paginate by estimated height
+    const pages = [];
+    let current = [];
+    let yUsed = 0;
+    const headerH = 30;
+    const usable = pageH - margin * 2 - headerH;
+
+    const rowHeight = (r) => {
+      if (r.type === 'title') return 22;
+      if (r.type === 'h') return (r.size + 6) * (r.first ? 1.15 : 1);
+      if (r.type === 'p' || r.type === 'li') return r.size * 1.4;
+      if (r.type === 'codeLine') return r.size * 1.35;
+      if (r.type === 'codeStart' || r.type === 'codeEnd') return 6;
+      if (r.type === 'hr') return 14;
+      if (r.type === 'gap') return r.h;
+      return 12;
+    };
+
+    for (const r of rows) {
+      const h = rowHeight(r);
+      if (yUsed + h > usable && current.length) {
+        pages.push({ kind: 'md', name, rows: current });
+        current = [];
+        yUsed = 0;
+      }
+      current.push(r);
+      yUsed += h;
+    }
+    if (current.length) pages.push({ kind: 'md', name, rows: current });
+    if (!pages.length) pages.push({ kind: 'md', name, rows: [{ type: 'p', spans: [{ text: '', style: 'normal' }], size: bodySize }] });
+    return pages;
+  }
+
+  // ── Content streams ──────────────────────────────────────────────
+  function codePageStream(pageInfo, opts) {
     const { pageW, pageH, fontSize, showLines, margin } = opts;
-    const lineH = fontSize * 1.35;
+    const lineH = pageInfo.lineH || fontSize * 1.4;
     const headerH = 28;
     const topY = pageH - margin - 8;
     const textStartY = pageH - margin - headerH;
-    const charW = fontSize * 0.6;
-    const gutter = showLines ? Math.max(28, 4 * charW + 12) : 0;
+    const gutter = pageInfo.gutter || 0;
     const textX = margin + gutter;
     const numX = margin + 4;
+    const charW = fontSize * 0.6;
 
     const parts = [];
-
-    // Header filename
     parts.push('BT');
     parts.push(`/F1 ${fontSize + 1} Tf`);
-    parts.push('0 0 0 rg');
+    parts.push(rgb(C.header));
     parts.push(`1 0 0 1 ${margin} ${topY - fontSize} Tm`);
     parts.push(`(${escapePdfString(pageInfo.name)}) Tj`);
     parts.push('ET');
 
-    // Subtle rule under header
-    parts.push('0.85 0.85 0.88 rg');
+    parts.push(rgb(C.rule));
     parts.push(`${margin} ${topY - fontSize - 8} ${pageW - margin * 2} 0.6 re f`);
 
-    // Code lines with absolute positioning for reliability
     parts.push('BT');
     parts.push(`/F1 ${fontSize} Tf`);
 
     let y = textStartY - fontSize;
-    pageInfo.lines.forEach((ln) => {
+    for (const ln of pageInfo.lines) {
       if (showLines && ln.lineNo != null) {
-        parts.push('0.45 0.45 0.5 rg');
+        parts.push(rgb(C.muted));
         parts.push(`1 0 0 1 ${numX} ${y} Tm`);
         parts.push(`(${escapePdfString(String(ln.lineNo))}) Tj`);
       }
-      parts.push('0 0 0 rg');
-      parts.push(`1 0 0 1 ${textX} ${y} Tm`);
-      parts.push(`(${escapePdfString(ln.text)}) Tj`);
+      let x = textX;
+      for (const tok of ln.tokens) {
+        if (!tok.text) continue;
+        parts.push(rgb(tok.color));
+        parts.push(`1 0 0 1 ${x} ${y} Tm`);
+        parts.push(`(${escapePdfString(tok.text)}) Tj`);
+        x += tok.text.length * charW;
+      }
       y -= lineH;
-    });
-
+    }
     parts.push('ET');
+    return parts.join('\n');
+  }
+
+  function mdPageStream(pageInfo, opts) {
+    const { pageW, pageH, fontSize, margin } = opts;
+    const topY = pageH - margin - 8;
+    const parts = [];
+    let y = pageH - margin - 4;
+
+    // Filename header
+    parts.push('BT');
+    parts.push(`/F2 ${fontSize} Tf`);
+    parts.push(rgb(C.muted));
+    parts.push(`1 0 0 1 ${margin} ${y - fontSize} Tm`);
+    parts.push(`(${escapePdfString(pageInfo.name + '  ·  Markdown preview')}) Tj`);
+    parts.push('ET');
+    y -= fontSize + 10;
+    parts.push(rgb(C.rule));
+    parts.push(`${margin} ${y} ${pageW - margin * 2} 0.6 re f`);
+    y -= 14;
+
+    for (const r of pageInfo.rows) {
+      if (r.type === 'title') {
+        // skip duplicate title if already in header
+        continue;
+      }
+      if (r.type === 'gap') {
+        y -= r.h;
+        continue;
+      }
+      if (r.type === 'hr') {
+        y -= 6;
+        parts.push(rgb(C.rule));
+        parts.push(`${margin} ${y} ${pageW - margin * 2} 0.8 re f`);
+        y -= 8;
+        continue;
+      }
+      if (r.type === 'h') {
+        if (r.first) y -= 4;
+        parts.push('BT');
+        parts.push(`/F2 ${r.size} Tf`);
+        parts.push(rgb(r.level <= 1 ? C.mdH1 : C.mdH2));
+        parts.push(`1 0 0 1 ${margin} ${y - r.size} Tm`);
+        parts.push(`(${escapePdfString(r.text)}) Tj`);
+        parts.push('ET');
+        y -= r.size + 6;
+        if (r.level <= 2 && r.first) {
+          parts.push(rgb(C.rule));
+          parts.push(`${margin} ${y + 2} ${pageW - margin * 2} 0.5 re f`);
+          y -= 6;
+        }
+        continue;
+      }
+      if (r.type === 'p') {
+        let x = margin;
+        const size = r.size;
+        const cw = size * 0.5;
+        parts.push('BT');
+        for (const sp of r.spans) {
+          const font = sp.style === 'code' ? '/F1' : '/F2';
+          const color = sp.style === 'code' ? C.keyword : C.text;
+          parts.push(`${font} ${size} Tf`);
+          parts.push(rgb(color));
+          parts.push(`1 0 0 1 ${x} ${y - size} Tm`);
+          parts.push(`(${escapePdfString(sp.text)}) Tj`);
+          x += sp.text.length * (sp.style === 'code' ? size * 0.6 : cw);
+        }
+        parts.push('ET');
+        y -= size * 1.4;
+        continue;
+      }
+      if (r.type === 'li') {
+        parts.push('BT');
+        parts.push(`/F2 ${r.size} Tf`);
+        parts.push(rgb(C.text));
+        parts.push(`1 0 0 1 ${margin} ${y - r.size} Tm`);
+        parts.push(`(${escapePdfString(r.text)}) Tj`);
+        parts.push('ET');
+        y -= r.size * 1.4;
+        continue;
+      }
+      if (r.type === 'codeStart') {
+        y -= 4;
+        continue;
+      }
+      if (r.type === 'codeEnd') {
+        y -= 4;
+        continue;
+      }
+      if (r.type === 'codeLine') {
+        const size = r.size;
+        const charW = size * 0.6;
+        // light background bar
+        parts.push(`${C.mdCodeBg[0]} ${C.mdCodeBg[1]} ${C.mdCodeBg[2]} rg`);
+        parts.push(`${margin - 2} ${y - size - 2} ${pageW - margin * 2 + 4} ${size + 4} re f`);
+        let x = margin + 4;
+        parts.push('BT');
+        parts.push(`/F1 ${size} Tf`);
+        for (const tok of r.tokens) {
+          if (!tok.text) continue;
+          parts.push(rgb(tok.color));
+          parts.push(`1 0 0 1 ${x} ${y - size} Tm`);
+          parts.push(`(${escapePdfString(tok.text)}) Tj`);
+          x += tok.text.length * charW;
+        }
+        parts.push('ET');
+        y -= size * 1.35;
+        continue;
+      }
+    }
     return parts.join('\n');
   }
 
@@ -760,9 +1265,7 @@
     try {
       const sources = items.map(it => ({ name: it.name, text: it.text }));
       const paste = (pasteEl.value || '').trim();
-      if (paste) {
-        sources.push({ name: 'pasted-code.txt', text: paste });
-      }
+      if (paste) sources.push({ name: 'pasted-code.txt', text: paste });
 
       if (sources.length === 0) {
         showStatus('err', 'Add at least one file or paste some code.');
@@ -778,25 +1281,36 @@
       showStatus('busy', 'Building PDF…');
 
       const doc = new mupdf.PDFDocument();
-      const font = new mupdf.Font('Courier');
-      const fontObj = doc.addSimpleFont(font, 'Latin');
+      const fontCourier = new mupdf.Font('Courier');
+      const fontHelv = new mupdf.Font('Helvetica');
+      const fontCourierObj = doc.addSimpleFont(fontCourier, 'Latin');
+      const fontHelvObj = doc.addSimpleFont(fontHelv, 'Latin');
 
       const resources = doc.newDictionary();
       const fontDict = doc.newDictionary();
-      fontDict.put('F1', fontObj);
+      fontDict.put('F1', fontCourierObj); // monospace
+      fontDict.put('F2', fontHelvObj);    // body / headings
       resources.put('Font', fontDict);
 
       let pageCount = 0;
 
       for (const src of sources) {
-        const pages = buildPagesForSource(src.name, src.text, opts);
+        const lang = detectLang(src.name);
+        let pages;
+        if (lang === 'md') {
+          pages = buildMdPages(src.name, src.text, opts);
+        } else {
+          pages = buildCodePages(src.name, src.text, lang, opts);
+        }
+
         for (const pageInfo of pages) {
-          const content = pageContentStream(pageInfo, opts);
+          const content = pageInfo.kind === 'md'
+            ? mdPageStream(pageInfo, opts)
+            : codePageStream(pageInfo, opts);
           const pageObj = doc.addPage([0, 0, pageW, pageH], 0, resources, content);
           doc.insertPage(pageCount, pageObj);
           pageCount++;
         }
-        // Yield so UI stays responsive on large files
         await new Promise(r => setTimeout(r, 0));
       }
 
@@ -823,6 +1337,7 @@
     }
   });
 </script>
+
 
 </body>
 </html>
