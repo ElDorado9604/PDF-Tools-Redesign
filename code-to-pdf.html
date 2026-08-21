@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="apple-touch-icon" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Code to PDF">
+<title>Code → PDF — format source as PDF, on-device</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #ffffff;
+    --card-soft: #f8fafc;
+    --ink: #0f172a;
+    --ink-soft: #475569;
+    --ink-muted: #94a3b8;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-soft: rgba(79, 70, 229, 0.08);
+    --accent-border: rgba(79, 70, 229, 0.3);
+    --ok: #059669;
+    --ok-bg: rgba(5, 150, 105, 0.1);
+    --err: #dc2626;
+    --err-bg: rgba(220, 38, 38, 0.1);
+    --line: #e2e8f0;
+    --shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100vh; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79, 70, 229, 0.18), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(79, 70, 229, 0.08), transparent);
+    color: var(--card);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    width: 100%;
+    max-width: 480px;
+    background: var(--card);
+    color: var(--ink);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .sheet::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1);
+  }
+
+  .inner { padding: 36px 28px 28px; }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 5px 10px;
+    border-radius: 999px;
+    margin-bottom: 14px;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25);
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    margin-bottom: 8px;
+    color: var(--ink);
+  }
+
+  p.lede {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin-bottom: 28px;
+  }
+
+  .field { margin-bottom: 18px; }
+
+  label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+
+  .dropzone {
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius-sm);
+    padding: 28px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    background: var(--card-soft);
+  }
+
+  .dropzone:hover {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+  }
+
+  .dropzone:active { transform: scale(0.99); }
+
+  .dropzone.has-file {
+    border-color: var(--accent);
+    border-style: solid;
+    background: var(--accent-soft);
+  }
+
+  .dropzone .fname {
+    font-size: 14.5px;
+    color: var(--ink);
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .dropzone .hint {
+    font-size: 13px;
+    color: var(--ink-muted);
+    margin-top: 4px;
+  }
+
+  input[type="file"] { display: none; }
+
+  textarea.codepaste {
+    width: 100%;
+    min-height: 110px;
+    padding: 14px 16px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--ink);
+    resize: vertical;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  textarea.codepaste:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  }
+
+  .filelist {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .filelist:empty { display: none; }
+
+  .filerow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--card-soft);
+  }
+
+  .filerow:last-child { border-bottom: none; }
+
+  .filerow .pos {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    width: 20px;
+    flex-shrink: 0;
+  }
+
+  .filerow .meta { flex: 1; min-width: 0; }
+
+  .filerow .fn {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .filerow .fs {
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .filerow .actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .iconbtn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease;
+  }
+
+  .iconbtn:hover { background: #e2e8f0; }
+  .iconbtn:disabled { opacity: 0.25; cursor: default; }
+  .iconbtn.remove { color: var(--err); }
+
+  .segmented {
+    display: flex;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .segbtn {
+    flex: 1;
+    padding: 11px 8px;
+    text-align: center;
+    background: var(--card-soft);
+    border: none;
+    border-right: 1px solid var(--line);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .segbtn:last-child { border-right: none; }
+
+  .segbtn.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .segbtn:hover:not(.active) { background: #e2e8f0; }
+
+  .option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card-soft);
+  }
+
+  .option input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+
+  .option label {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .opttext { flex: 1; min-width: 0; }
+
+  .subdesc {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  button.go {
+    width: 100%;
+    margin-top: 6px;
+    padding: 15px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-family: inherit;
+    font-size: 15.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+  }
+
+  button.go:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 14px -2px rgba(79, 70, 229, 0.4);
+  }
+
+  button.go:active:not(:disabled) { transform: scale(0.98); }
+
+  button.go:disabled {
+    background: #cbd5e1;
+    color: #64748b;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .status {
+    margin-top: 16px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    display: none;
+  }
+
+  .status.show { display: block; }
+  .status.busy { background: #f1f5f9; color: var(--ink-soft); }
+  .status.ok { background: var(--ok-bg); color: var(--ok); }
+  .status.err { background: var(--err-bg); color: var(--err); }
+
+  .result {
+    margin-top: 16px;
+    display: none;
+  }
+
+  .result.show { display: block; }
+
+  a.download {
+    display: block;
+    text-align: center;
+    padding: 15px;
+    border-radius: var(--radius-sm);
+    background: var(--ink);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15.5px;
+    transition: background 0.15s ease, transform 0.08s ease;
+  }
+
+  a.download:hover { background: #1e293b; }
+  a.download:active { transform: scale(0.98); }
+
+  .footnote {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  .footnote b { color: var(--ink); font-weight: 600; }
+
+  .footnote a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .footnote a:hover { text-decoration: underline; }
+
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 16px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .or-divider::before,
+  .or-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  @media (max-width: 420px) {
+    .inner { padding: 28px 20px 22px; }
+    h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="inner">
+    <div class="eyebrow">Runs entirely on this device</div>
+    <h1>Code → PDF</h1>
+    <p class="lede">Turn source files or pasted code into a clean, monospace PDF. Nothing is uploaded — everything stays in this browser tab.</p>
+
+    <div class="field">
+      <label for="file">Code / text files</label>
+      <div class="dropzone" id="dropzone">
+        <div class="fname" id="fname">Tap to choose files</div>
+        <div class="hint" id="fhint">or drag them in — .js, .py, .ts, .txt, .md…</div>
+      </div>
+      <input type="file" id="file" multiple accept=".txt,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.swift,.kt,.scala,.sql,.html,.css,.scss,.json,.xml,.yaml,.yml,.toml,.ini,.sh,.bash,.zsh,.md,.markdown,.vue,.svelte,.r,.m,.pl,.lua,.dart,.vim,.gitignore,.env,text/plain,text/*,application/json,application/javascript">
+    </div>
+
+    <ul class="filelist" id="filelist"></ul>
+
+    <div class="or-divider">or paste</div>
+
+    <div class="field">
+      <label for="paste">Paste code</label>
+      <textarea id="paste" class="codepaste" placeholder="Paste a snippet here…" spellcheck="false"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Page size</label>
+      <div class="segmented" id="pageSizeSeg">
+        <button type="button" class="segbtn active" data-size="a4">A4</button>
+        <button type="button" class="segbtn" data-size="letter">Letter</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Font size</label>
+      <div class="segmented" id="fontSizeSeg">
+        <button type="button" class="segbtn" data-size="9">9</button>
+        <button type="button" class="segbtn active" data-size="10">10</button>
+        <button type="button" class="segbtn" data-size="11">11</button>
+        <button type="button" class="segbtn" data-size="12">12</button>
+      </div>
+    </div>
+
+    <div class="option">
+      <input type="checkbox" id="lineNumbers" checked>
+      <div class="opttext">
+        <label for="lineNumbers">Show line numbers</label>
+        <div class="subdesc">Adds a left gutter with line numbers for easier reading.</div>
+      </div>
+    </div>
+
+    <button class="go" id="go" disabled>Add a file or paste code</button>
+
+    <div class="status" id="status"></div>
+    <div class="result" id="result">
+      <a class="download" id="downloadLink" download="code.pdf">Save PDF</a>
+    </div>
+
+    <div class="footnote">
+      <b>How it works.</b> This page loads MuPDF compiled to WebAssembly and builds a PDF with the Courier monospace font entirely in your browser. First load pulls down about 10&nbsp;MB of engine files; after that it works from cache.
+      <br><br>
+      <a href="./index.html" style="color:var(--ink-soft);">← All tools</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import * as mupdf from "./mupdf.js";
+
+  const fileInput = document.getElementById('file');
+  const dropzone = document.getElementById('dropzone');
+  const fname = document.getElementById('fname');
+  const fhint = document.getElementById('fhint');
+  const filelist = document.getElementById('filelist');
+  const pasteEl = document.getElementById('paste');
+  const goBtn = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const downloadLink = document.getElementById('downloadLink');
+  const lineNumbersCb = document.getElementById('lineNumbers');
+
+  const PAGE = {
+    a4:     { w: 595.28, h: 841.89 },
+    letter: { w: 612,    h: 792 }
+  };
+
+  let pageSize = 'a4';
+  let fontSize = 10;
+  let items = []; // { id, name, text }
+
+  let nextId = 1;
+
+  // ── Segmented controls ──────────────────────────────────────────
+  document.getElementById('pageSizeSeg').addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    document.querySelectorAll('#pageSizeSeg .segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    pageSize = btn.dataset.size;
+  });
+
+  document.getElementById('fontSizeSeg').addEventListener('click', e => {
+    const btn = e.target.closest('.segbtn');
+    if (!btn) return;
+    document.querySelectorAll('#fontSizeSeg .segbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    fontSize = parseInt(btn.dataset.size, 10);
+  });
+
+  // ── File handling ────────────────────────────────────────────────
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files?.length) addFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  pasteEl.addEventListener('input', updateButton);
+
+  async function addFiles(fileList) {
+    for (const f of fileList) {
+      try {
+        const text = await f.text();
+        items.push({ id: nextId++, name: f.name || 'untitled.txt', text });
+      } catch (err) {
+        showStatus('err', `Could not read ${f.name}: ${err.message || err}`);
+      }
+    }
+    renderList();
+    updateButton();
+    resultEl.classList.remove('show');
+    hideStatus();
+  }
+
+  function renderList() {
+    filelist.innerHTML = '';
+    items.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.className = 'filerow';
+      li.innerHTML = `
+        <span class="pos">${i + 1}</span>
+        <span class="meta">
+          <div class="fn"></div>
+          <div class="fs">${item.text.length.toLocaleString()} chars · ${item.text.split('\n').length} lines</div>
+        </span>
+        <span class="actions">
+          <button class="iconbtn up" ${i === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
+          <button class="iconbtn down" ${i === items.length - 1 ? 'disabled' : ''} title="Move down">&#9660;</button>
+          <button class="iconbtn remove" title="Remove">&#10005;</button>
+        </span>`;
+      li.querySelector('.fn').textContent = item.name;
+      li.querySelector('.up').addEventListener('click', () => moveItem(i, -1));
+      li.querySelector('.down').addEventListener('click', () => moveItem(i, 1));
+      li.querySelector('.remove').addEventListener('click', () => {
+        items.splice(i, 1);
+        renderList();
+        updateButton();
+      });
+      filelist.appendChild(li);
+    });
+
+    if (items.length) {
+      fname.textContent = `${items.length} file${items.length > 1 ? 's' : ''} ready`;
+      fhint.textContent = 'tap to add more';
+      dropzone.classList.add('has-file');
+    } else {
+      fname.textContent = 'Tap to choose files';
+      fhint.textContent = 'or drag them in — .js, .py, .ts, .txt, .md…';
+      dropzone.classList.remove('has-file');
+    }
+  }
+
+  function moveItem(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    [items[i], items[j]] = [items[j], items[i]];
+    renderList();
+  }
+
+  function updateButton() {
+    const hasPaste = (pasteEl.value || '').trim().length > 0;
+    const hasFiles = items.length > 0;
+    if (!hasFiles && !hasPaste) {
+      goBtn.disabled = true;
+      goBtn.textContent = 'Add a file or paste code';
+    } else {
+      goBtn.disabled = false;
+      goBtn.textContent = 'Create PDF';
+    }
+  }
+
+  function showStatus(kind, msg) {
+    statusEl.className = `status show ${kind}`;
+    statusEl.textContent = msg;
+  }
+  function hideStatus() {
+    statusEl.className = 'status';
+  }
+
+  // ── PDF helpers ──────────────────────────────────────────────────
+  function escapePdfString(s) {
+    return s
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/\r/g, '')
+      .replace(/[^\x09\x20-\x7E]/g, ch => {
+        // Keep printable ASCII; replace others with '?'
+        return '?';
+      });
+  }
+
+  function wrapLine(line, maxChars) {
+    if (line.length <= maxChars) return [line];
+    const out = [];
+    let rest = line;
+    while (rest.length > maxChars) {
+      // Prefer breaking at a space if possible
+      let breakAt = rest.lastIndexOf(' ', maxChars);
+      if (breakAt < maxChars * 0.5) breakAt = maxChars;
+      out.push(rest.slice(0, breakAt));
+      rest = rest.slice(breakAt).replace(/^\s+/, '');
+    }
+    if (rest.length) out.push(rest);
+    return out;
+  }
+
+  function buildPagesForSource(name, rawText, opts) {
+    const { pageW, pageH, fontSize, showLines, margin } = opts;
+    const lineH = fontSize * 1.35;
+    const headerH = 28;
+    const topY = pageH - margin - headerH;
+    const bottomY = margin + 20;
+    const usableH = topY - bottomY;
+    const linesPerPage = Math.max(1, Math.floor(usableH / lineH));
+
+    // Approx char width for Courier at fontSize (Courier is ~0.6em wide)
+    const charW = fontSize * 0.6;
+    const gutter = showLines ? Math.max(28, String(rawText.split('\n').length).length * charW + 12) : 0;
+    const textWidth = pageW - margin * 2 - gutter;
+    const maxChars = Math.max(20, Math.floor(textWidth / charW));
+
+    const sourceLines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const displayLines = []; // { text, lineNo }
+
+    sourceLines.forEach((src, idx) => {
+      const wrapped = wrapLine(src, maxChars);
+      wrapped.forEach((chunk, wi) => {
+        displayLines.push({
+          text: chunk,
+          lineNo: wi === 0 ? (idx + 1) : null
+        });
+      });
+    });
+
+    if (displayLines.length === 0) {
+      displayLines.push({ text: '', lineNo: 1 });
+    }
+
+    const pages = [];
+    for (let start = 0; start < displayLines.length; start += linesPerPage) {
+      const chunk = displayLines.slice(start, start + linesPerPage);
+      pages.push({ name, lines: chunk, isFirst: start === 0 });
+    }
+    return pages;
+  }
+
+  function pageContentStream(pageInfo, opts) {
+    const { pageW, pageH, fontSize, showLines, margin } = opts;
+    const lineH = fontSize * 1.35;
+    const headerH = 28;
+    const topY = pageH - margin - 8;
+    const textStartY = pageH - margin - headerH;
+    const charW = fontSize * 0.6;
+    const gutter = showLines ? Math.max(28, 4 * charW + 12) : 0;
+    const textX = margin + gutter;
+    const numX = margin + 4;
+
+    const parts = [];
+
+    // Header filename
+    parts.push('BT');
+    parts.push(`/F1 ${fontSize + 1} Tf`);
+    parts.push('0 0 0 rg');
+    parts.push(`1 0 0 1 ${margin} ${topY - fontSize} Tm`);
+    parts.push(`(${escapePdfString(pageInfo.name)}) Tj`);
+    parts.push('ET');
+
+    // Subtle rule under header
+    parts.push('0.85 0.85 0.88 rg');
+    parts.push(`${margin} ${topY - fontSize - 8} ${pageW - margin * 2} 0.6 re f`);
+
+    // Code lines with absolute positioning for reliability
+    parts.push('BT');
+    parts.push(`/F1 ${fontSize} Tf`);
+
+    let y = textStartY - fontSize;
+    pageInfo.lines.forEach((ln) => {
+      if (showLines && ln.lineNo != null) {
+        parts.push('0.45 0.45 0.5 rg');
+        parts.push(`1 0 0 1 ${numX} ${y} Tm`);
+        parts.push(`(${escapePdfString(String(ln.lineNo))}) Tj`);
+      }
+      parts.push('0 0 0 rg');
+      parts.push(`1 0 0 1 ${textX} ${y} Tm`);
+      parts.push(`(${escapePdfString(ln.text)}) Tj`);
+      y -= lineH;
+    });
+
+    parts.push('ET');
+    return parts.join('\n');
+  }
+
+  // ── Main action ──────────────────────────────────────────────────
+  goBtn.addEventListener('click', async () => {
+    resultEl.classList.remove('show');
+    goBtn.disabled = true;
+    showStatus('busy', 'Preparing…');
+
+    try {
+      const sources = items.map(it => ({ name: it.name, text: it.text }));
+      const paste = (pasteEl.value || '').trim();
+      if (paste) {
+        sources.push({ name: 'pasted-code.txt', text: paste });
+      }
+
+      if (sources.length === 0) {
+        showStatus('err', 'Add at least one file or paste some code.');
+        goBtn.disabled = false;
+        return;
+      }
+
+      const { w: pageW, h: pageH } = PAGE[pageSize];
+      const margin = 42;
+      const showLines = lineNumbersCb.checked;
+      const opts = { pageW, pageH, fontSize, showLines, margin };
+
+      showStatus('busy', 'Building PDF…');
+
+      const doc = new mupdf.PDFDocument();
+      const font = new mupdf.Font('Courier');
+      const fontObj = doc.addSimpleFont(font, 'Latin');
+
+      const resources = doc.newDictionary();
+      const fontDict = doc.newDictionary();
+      fontDict.put('F1', fontObj);
+      resources.put('Font', fontDict);
+
+      let pageCount = 0;
+
+      for (const src of sources) {
+        const pages = buildPagesForSource(src.name, src.text, opts);
+        for (const pageInfo of pages) {
+          const content = pageContentStream(pageInfo, opts);
+          const pageObj = doc.addPage([0, 0, pageW, pageH], 0, resources, content);
+          doc.insertPage(pageCount, pageObj);
+          pageCount++;
+        }
+        // Yield so UI stays responsive on large files
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      showStatus('busy', 'Saving…');
+      const buf = doc.saveToBuffer('');
+      const outBytes = buf.asUint8Array();
+      const blob = new Blob([outBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      const outName = sources.length === 1
+        ? sources[0].name.replace(/\.[^.]+$/, '') + '.pdf'
+        : 'code.pdf';
+
+      downloadLink.href = url;
+      downloadLink.download = outName;
+
+      showStatus('ok', `Ready — ${pageCount} page${pageCount !== 1 ? 's' : ''}.`);
+      resultEl.classList.add('show');
+      goBtn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      showStatus('err', 'Something went wrong: ' + (err.message || err));
+      goBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>
