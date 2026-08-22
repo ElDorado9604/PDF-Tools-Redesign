@@ -684,12 +684,51 @@
 
   // ── PDF helpers ──────────────────────────────────────────────────
   function escapePdfString(s) {
-    return String(s)
+    // Map common Unicode to ASCII so Base14 fonts don't show "?"
+    const map = {
+      '\u2014': '--',  // em dash
+      '\u2013': '-',   // en dash
+      '\u2018': "'",   // left single quote
+      '\u2019': "'",   // right single quote
+      '\u201C': '"',   // left double quote
+      '\u201D': '"',   // right double quote
+      '\u2026': '...', // ellipsis
+      '\u00A0': ' ',   // nbsp
+      '\u2022': '-',   // bullet
+      '\u00B7': '-',   // middle dot
+      '\u2192': '->',  // right arrow
+      '\u2190': '<-',
+      '\u00D7': 'x',
+      '\u2248': '~=',
+      '\u2260': '!=',
+      '\u2264': '<=',
+      '\u2265': '>=',
+      '\u00E9': 'e', '\u00E8': 'e', '\u00EA': 'e',
+      '\u00E0': 'a', '\u00E1': 'a', '\u00E2': 'a',
+      '\u00F1': 'n',
+      '\u00FC': 'u', '\u00F6': 'o', '\u00E4': 'a',
+      '\u00C9': 'E',
+      '\u2122': '(TM)',
+      '\u00AE': '(R)',
+      '\u00A9': '(C)',
+      '\u00B0': ' deg',
+      '\u00A3': 'GBP',
+      '\u20AC': 'EUR',
+      '\u00A5': 'YEN',
+      '\u200B': '',    // zero-width space
+      '\uFEFF': '',    // bom
+      '\t': '    ',
+    };
+    let out = String(s);
+    for (const [u, a] of Object.entries(map)) {
+      out = out.split(u).join(a);
+    }
+    return out
       .replace(/\\/g, '\\\\')
       .replace(/\(/g, '\\(')
       .replace(/\)/g, '\\)')
       .replace(/\r/g, '')
-      .replace(/[^\x09\x20-\x7E]/g, () => '?');
+      .replace(/[^\x09\x20-\x7E]/g, () => ''); // drop anything still non-ASCII
   }
 
   function rgb(c) {
@@ -1017,8 +1056,10 @@
     return blocks;
   }
 
-  // Inline MD: **bold** *italic* `code`
+  // Inline MD: **bold** *italic* `code` [links](url)
   function parseInline(text) {
+    // Turn [label](url) into just "label"
+    text = String(text).replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
     const spans = [];
     const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|[^*`]+)/g;
     let m;
@@ -1026,7 +1067,7 @@
       const s = m[0];
       if (s.startsWith('**') && s.endsWith('**')) {
         spans.push({ text: s.slice(2, -2), style: 'bold' });
-      } else if (s.startsWith('*') && s.endsWith('*')) {
+      } else if (s.startsWith('*') && s.endsWith('*') && s.length > 2) {
         spans.push({ text: s.slice(1, -1), style: 'italic' });
       } else if (s.startsWith('`') && s.endsWith('`')) {
         spans.push({ text: s.slice(1, -1), style: 'code' });
@@ -1131,14 +1172,27 @@
         rows.push({ type: 'gap', h: 6 });
       } else if (b.type === 'ul' || b.type === 'ol') {
         b.items.forEach((item, idx) => {
-          const bullet = b.type === 'ul' ? '• ' : `${idx + 1}. `;
-          const wrapped = wrapPlain(bullet + item, maxChars);
+          const bullet = b.type === 'ul' ? '- ' : `${idx + 1}. `;
+          // Parse inline markdown (**bold**, *italic*, `code`) on the item body
+          const bodySpans = parseInline(item);
+          const plain = bodySpans.map(s => s.text).join('');
+          const wrapped = wrapPlain(bullet + plain, maxChars);
           wrapped.forEach((t, wi) => {
-            rows.push({
-              type: 'li',
-              text: wi === 0 ? t : t.replace(/^[•\d.]+\s*/, '  '),
-              size: bodySize
-            });
+            if (wi === 0) {
+              // First line: bullet + rest, re-parse rest for styles
+              const rest = t.slice(bullet.length);
+              const spans = [
+                { text: bullet, style: 'normal' },
+                ...parseInline(rest)
+              ];
+              rows.push({ type: 'li', spans, size: bodySize });
+            } else {
+              rows.push({
+                type: 'li',
+                spans: [{ text: '  ', style: 'normal' }, ...parseInline(t)],
+                size: bodySize
+              });
+            }
           });
         });
         rows.push({ type: 'gap', h: 6 });
@@ -1310,13 +1364,22 @@
         continue;
       }
       if (r.type === 'li') {
+        let x = margin;
+        const size = r.size;
+        const cw = size * 0.5;
+        const spans = r.spans || [{ text: r.text || '', style: 'normal' }];
         parts.push('BT');
-        parts.push(`/F2 ${r.size} Tf`);
-        parts.push(rgb(C.text));
-        parts.push(`1 0 0 1 ${margin} ${y - r.size} Tm`);
-        parts.push(`(${escapePdfString(r.text)}) Tj`);
+        for (const sp of spans) {
+          const font = sp.style === 'code' ? '/F1' : '/F2';
+          const color = sp.style === 'code' ? C.keyword : C.text;
+          parts.push(`${font} ${size} Tf`);
+          parts.push(rgb(color));
+          parts.push(`1 0 0 1 ${x} ${y - size} Tm`);
+          parts.push(`(${escapePdfString(sp.text)}) Tj`);
+          x += sp.text.length * (sp.style === 'code' ? size * 0.6 : cw);
+        }
         parts.push('ET');
-        y -= r.size * 1.4;
+        y -= size * 1.4;
         continue;
       }
       if (r.type === 'codeStart') {
